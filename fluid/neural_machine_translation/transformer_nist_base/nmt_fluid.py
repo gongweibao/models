@@ -2,6 +2,8 @@ import os
 import time
 import argparse
 import numpy as np
+import gc
+import inspect
 
 import paddle
 import paddle.fluid as fluid
@@ -16,6 +18,16 @@ import paddle.fluid.debuger as debuger
 import nist_data_provider
 import sys
 #from memory_profiler import profile
+
+'''
+import psutil
+def memory_usage_psutil():
+    # return the memory usage in MB
+    process = psutil.Process(os.getpid())
+    mem = process.memory_full_info()
+    return mem
+'''
+
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -75,7 +87,7 @@ parser.add_argument(
     help="pass num of train")
 
 parser.add_argument(
-    "--test_save",
+    "--break_loop",
     type=str2bool,
     default=False,
     help="test save model")
@@ -236,6 +248,7 @@ def main():
     optimize_ops, params_grads = optimizer.minimize(avg_cost if TrainTaskConfig.use_avg_cost else sum_cost)
 
 
+    '''
     # Program to do validation.
     inference_program = fluid.default_main_program().clone()
     with fluid.program_guard(inference_program):
@@ -260,27 +273,26 @@ def main():
         test_avg_cost = test_total_cost / test_total_token
         test_ppl = np.exp([min(test_avg_cost, 100)])
         return test_avg_cost, test_ppl
+    '''
 
-    def train_loop(exe, trainer_prog):
-        # Initialize the parameters.
-        """
-        exe.run(fluid.framework.default_startup_program())
-        """
-        for pos_enc_param_name in pos_enc_param_names:
-            pos_enc_param = fluid.global_scope().find_var(
-                pos_enc_param_name).get_tensor()
-            pos_enc_param.set(
-                position_encoding_init(ModelHyperParams.max_length + 1,
-                                       ModelHyperParams.d_model), place)
-
-    def train_loop(exe, trainer_prog):
+    def train_loop(exe, trainer_prog, desc_path=""):
         for pass_id in xrange(args.pass_num):
             ts = time.time()
             total = 0
             pass_start_time = time.time()
-            for batch_id, data in enumerate(train_reader()):
+
+            #core.memory_stats(core.CPUPlace(), "pass %d begin" % pass_id)
+            r = train_reader()
+            data = r.next()
+            time.sleep(2)
+            #for batch_id, data in enumerate(train_reader()):
+            batch_id = -1
+            while True:
+                batch_id += 1
                 if len(data) != args.batch_size:
                     continue
+
+                # m1 = core.memory_stats(core.CPUPlace())
 
                 total += len(data)
                 start_time = time.time()
@@ -293,7 +305,14 @@ def main():
                 if args.local:
                     lr_scheduler.update_learning_rate(data_input)
                 '''
-                outs = exe.run(trainer_prog,
+                if desc_path != "":
+                    outs = exe.run(trainer_prog,
+                               feed=data_input,
+                               fetch_list=[sum_cost, avg_cost],
+                               use_program_cache=True,
+                               save_program_to_file=desc_path)
+                else:
+                    outs = exe.run(trainer_prog,
                                feed=data_input,
                                fetch_list=[sum_cost, avg_cost],
                                use_program_cache=True)
@@ -303,10 +322,18 @@ def main():
                        np.exp([min(avg_cost_val[0], 100)]), 
                        len(data) / (time.time() - start_time)))
 
-                if args.test_save:
+                #print "python mem usage:", memory_usage_psutil()
+                #print "objects:", gc.get_count(), gc.get_threshold()
+                #print "garbage:", gc.garbage
+
+                if args.break_loop:
                     if batch_id == args.exit_batch_id:
                         print("batch_id: %d exit!" % batch_id)
                         break
+
+                gc.collect()
+                # m2 = core.memory_stats(core.CPUPlace())
+                # print "batch %d diff %d" % (batch_id, m2.sys.uordblks - m1.sys.uordblks)
 
             # Validate and save the model for inference.
             # val_avg_cost, val_ppl = test(exe)
@@ -323,12 +350,16 @@ def main():
                 encoder_input_data_names + decoder_input_data_names[:-1],
                 [predict], exe)
 
-            if args.test_save:
+            if args.break_loop:
                 break
+
+        #gc.collect()
+        #core.memory_stats(core.CPUPlace(), "pass %d end" %(pass_id))
 
     if args.local:
         # Initialize the parameters.
-        exe.run(fluid.framework.default_startup_program())
+        exe.run(fluid.framework.default_startup_program(),
+                save_program_to_file="/root/go/src/github.com/PaddlePaddle/models/fluid/neural_machine_translation/transformer_nist_base/trainer_local_startup.desc")
         #print("local start_up:")
         #print(debuger.pprint_program_codes(fluid.framework.default_startup_program()))
         for pos_enc_param_name in pos_enc_param_names:
@@ -353,7 +384,8 @@ def main():
             batch_size=TrainTaskConfig.batch_size)
         '''
 
-        train_loop(exe, fluid.default_main_program())
+        train_loop(exe, fluid.default_main_program(), 
+                   "/root/go/src/github.com/PaddlePaddle/models/fluid/neural_machine_translation/transformer_nist_base/trainer_local_loop.desc")
     else:
         trainers = int(os.getenv("TRAINERS"))  # total trainer count
         print("trainers total: ", trainers)
@@ -438,6 +470,16 @@ def print_arguments():
     print('------------------------------------------------')
 
 if __name__ == "__main__":
+    gc.enable()
+    #gc.set_debug(gc.DEBUG_UNCOLLECTABLE | gc.DEBUG_OBJECTS)
     print_arguments()
+
+    #core.memory_stats(core.CPUPlace(), "train begin")
     main()
+    #gc.collect()
+    #core.memory_stats(core.CPUPlace(), "train end")
+
+    #unreachable = gc.collect()
+    #print "unreachable %d" % unreachable
+    #print gc.garbage
 
