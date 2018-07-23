@@ -12,7 +12,7 @@ from model import transformer, position_encoding_init
 from optim import LearningRateScheduler
 from config import *
 import reader
-
+from paddle.fluid import debugger
 
 def parse_args():
     parser = argparse.ArgumentParser("Training for Transformer.")
@@ -41,6 +41,14 @@ def parse_args():
         default=True,
         help="The flag indicating whether to "
         "produce batch data according to token number.")
+    parser.add_argument(
+        "--pass_num",
+        type=int,
+        default=TrainTaskConfig.pass_num,
+        help="The number of sequences contained in a mini-batch, or the maximum "
+        "number of tokens (include paddings) contained in a mini-batch. Note "
+        "that this represents the number on single device and the actual batch "
+        "size for multi-devices will multiply the device number.")
     parser.add_argument(
         "--batch_size",
         type=int,
@@ -94,6 +102,9 @@ def parse_args():
         help="The device type.")
     parser.add_argument(
         '--sync', type=ast.literal_eval, default=True, help="sync mode.")
+
+    parser.add_argument(
+        '--check_acc', type=ast.literal_eval, default=False, help="check only accuracy.")
 
     args = parser.parse_args()
     # Append args related to dict
@@ -328,7 +339,8 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         fluid.io.load_persistables(exe, TrainTaskConfig.ckpt_path)
         lr_scheduler.current_steps = TrainTaskConfig.start_step
     else:
-        print "init fluid.framework.default_startup_program"
+        #print "init fluid.framework.default_startup_program"
+        #debugger.draw_block_graphviz(fluid.framework.default_startup_program().global_block(), path="local_startup.dot")
         exe.run(fluid.framework.default_startup_program())
 
     train_data = reader.DataReader(
@@ -372,8 +384,9 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                             token_num)
 
     init = False
-    for pass_id in xrange(TrainTaskConfig.pass_num):
+    for pass_id in xrange(args.pass_num):
         pass_start_time = time.time()
+        #print "train_data len:", len(train_data())
         for batch_id, data in enumerate(train_data()):
             feed_list = []
             total_num_token = 0
@@ -400,6 +413,7 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                             ModelHyperParams.max_length + 1,
                             ModelHyperParams.d_model)
                         feed_list[place_id][pos_enc_param_name] = pos_enc
+                #print batch_id, place_id, feed_list
             for feed_dict in feed_list:
                 feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
             outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name],
@@ -461,6 +475,8 @@ def train(args):
                                          TrainTaskConfig.learning_rate)
 
     if args.local:
+        print "print forward network"
+        debugger.draw_block_graphviz(fluid.framework.default_main_program().global_block(), path="local_main.dot")
         optimizer = fluid.optimizer.Adam(
             learning_rate=lr_scheduler.learning_rate,
             beta1=TrainTaskConfig.beta1,
@@ -531,4 +547,9 @@ def train(args):
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.check_acc:
+        fluid.default_startup_program().random_seed = 1
+        fluid.default_main_program().random_seed = 1
+        ModelHyperParams.dropout = 0.0
+
     train(args)
