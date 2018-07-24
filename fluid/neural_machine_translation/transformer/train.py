@@ -237,12 +237,12 @@ def read_multiple(reader, count, clip_last=True):
     Stack data from reader for multi-devices.
     """
 
-    print "read_multiple count:", count
     def __impl__():
         res = []
         for item in reader():
             res.append(item)
             if len(res) == count:
+                print "res len:", count
                 yield res
                 res = []
         if len(res) == count:
@@ -265,12 +265,13 @@ def split_data(data, num_part):
     """
     Split data for each device.
     """
+    print "data len:", len(data)
     if len(data) == num_part:
         return data
     data = data[0]
-    #print "data:", data
+    print "data:", data
     inst_num_per_part = len(data) // num_part
-    #print "data len:", len(data), " inst_num_per_part:", inst_num_per_part
+    print "data len:", len(data), " inst_num_per_part:", inst_num_per_part
     #sys.exit(0)
     return [
         data[inst_num_per_part * i:inst_num_per_part * (i + 1)]
@@ -393,11 +394,13 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         pass_start_time = time.time()
         #print "train_data len:", len(train_data())
         for batch_id, data in enumerate(train_data()):
+            print "batch_id 0:", batch_id, "data len:", len(data)
             feed_list = []
             total_num_token = 0
             for place_id, data_buffer in enumerate(
                     split_data(
                         data, num_part=dev_count)):
+                print "batch_id 2:", batch_id
                 data_input_dict, util_input_dict, num_token = prepare_batch_input(
                     data_buffer, data_input_names, util_input_names,
                     ModelHyperParams.eos_idx, ModelHyperParams.eos_idx,
