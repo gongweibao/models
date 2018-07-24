@@ -1,3 +1,6 @@
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64/:/usr/local/lib/:/workspace/brpc
+export PYTHONPATH=$PYTHONPATH:/paddle/build/build_develop/python
+
 #pserver0
 export PADDLE_PSERVERS=127.0.0.1,127.0.0.1
 export POD_IP=127.0.0.1

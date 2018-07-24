@@ -487,6 +487,7 @@ def train(args):
             beta2=TrainTaskConfig.beta2,
             epsilon=TrainTaskConfig.eps)
         optimizer.minimize(sum_cost)
+        #fluid.memory_optimize(fluid.default_main_program())
     elif args.sync == False:
         optimizer = fluid.optimizer.SGD(0.003)
         optimizer.minimize(sum_cost)
