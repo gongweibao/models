@@ -4,6 +4,7 @@ import argparse
 import ast
 import numpy as np
 import multiprocessing
+import sys
 
 import paddle
 import paddle.fluid as fluid
@@ -236,6 +237,7 @@ def read_multiple(reader, count, clip_last=True):
     Stack data from reader for multi-devices.
     """
 
+    print "read_multiple count:", count
     def __impl__():
         res = []
         for item in reader():
@@ -266,7 +268,10 @@ def split_data(data, num_part):
     if len(data) == num_part:
         return data
     data = data[0]
+    #print "data:", data
     inst_num_per_part = len(data) // num_part
+    #print "data len:", len(data), " inst_num_per_part:", inst_num_per_part
+    #sys.exit(0)
     return [
         data[inst_num_per_part * i:inst_num_per_part * (i + 1)]
         for i in range(num_part)
@@ -475,8 +480,8 @@ def train(args):
                                          TrainTaskConfig.learning_rate)
 
     if args.local:
-        print "print forward network"
-        debugger.draw_block_graphviz(fluid.framework.default_main_program().global_block(), path="local_main.dot")
+        #print "print forward network"
+        #debugger.draw_block_graphviz(fluid.framework.default_main_program().global_block(), path="local_main.dot")
         optimizer = fluid.optimizer.Adam(
             learning_rate=lr_scheduler.learning_rate,
             beta1=TrainTaskConfig.beta1,
@@ -505,21 +510,34 @@ def train(args):
                    fluid.default_main_program(), dev_count, sum_cost, avg_cost,
                    lr_scheduler, token_num, predict)
     else:
-        port = os.getenv("PADDLE_PORT", "6174")
-        pserver_ips = os.getenv("PADDLE_PSERVERS")  # ip,ip...
+        ps_ports = os.getenv("PADDLE_PORT", "6174")     # port or port,port...
+        ps_ips = os.getenv("PADDLE_PSERVERS")           #         ip,ip...
+
+        ps_ips = ps_ips.split(",")
+        ps_ports = ps_ports.split(",")
+
         eplist = []
-        for ip in pserver_ips.split(","):
-            eplist.append(':'.join([ip, port]))
-        pserver_endpoints = ",".join(eplist)  # ip:port,ip:port...
+        current_endpoint=""
+        if len(ps_ports) > 1:
+            assert(len(ps_ips) == len(ps_ports))
+            for ip,port in zip(ps_ips, ps_ports):
+                eplist.append(':'.join([ip, port]))
+        else:
+            for ip in ps_ips:
+                eplist.append(':'.join([ip, ps_port[0]]))
+        print("eplist:", eplist)
+        pserver_endpoints = ",".join(eplist)         # ip:port,ip:port...
+        print("pserver_endpoints:", pserver_endpoints)
+
         trainers = int(os.getenv("PADDLE_TRAINERS_NUM", "0"))
-        current_endpoint = os.getenv("POD_IP") + ":" + port
+        
         trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
         t = fluid.DistributeTranspiler()
         t.transpile(trainer_id, pservers=pserver_endpoints, trainers=trainers)
 
         if training_role == "PSERVER":
-            current_endpoint = os.getenv("POD_IP") + ":" + os.getenv(
-                "PADDLE_PORT")
+            current_endpoint = os.getenv("PADDLE_CURRENT_ENDPOINT")
+            print("current_endpoints:", current_endpoint)
             if not current_endpoint:
                 print("need env SERVER_ENDPOINT")
                 exit(1)
@@ -528,17 +546,11 @@ def train(args):
                                                     pserver_prog)
 
             print "psserver begin run"
-            with open('pserver_startup.desc', 'w') as f:
-                f.write(str(pserver_startup))
-            with open('pserver_prog.desc', 'w') as f:
-                f.write(str(pserver_prog))
             exe.run(pserver_startup)
             exe.run(pserver_prog)
         elif training_role == "TRAINER":
-
+            print "trainer begin run"
             trainer_prog = t.get_trainer_program()
-            with open('trainer_prog.desc', 'w') as f:
-                f.write(str(trainer_prog))
             train_loop(exe, trainer_prog, dev_count, sum_cost, avg_cost,
                        lr_scheduler, token_num, predict)
         else:
@@ -551,5 +563,9 @@ if __name__ == "__main__":
         fluid.default_startup_program().random_seed = 1
         fluid.default_main_program().random_seed = 1
         ModelHyperParams.dropout = 0.0
+
+        assert(not args.shuffle)
+        assert(not args.shuffle_batch)
+        assert(not args.use_token_batch)
 
     train(args)
