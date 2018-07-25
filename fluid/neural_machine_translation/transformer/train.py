@@ -14,6 +14,7 @@ from optim import LearningRateScheduler
 from config import *
 import reader
 from paddle.fluid import debugger
+import paddle.fluid.layers as layers
 
 import hashlib
 
@@ -336,6 +337,15 @@ def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
 
     return test
 
+def _clone_var_in_block_(block, var):
+    assert isinstance(var, fluid.Variable)
+    return block.create_var(
+        name=var.name,
+        shape=var.shape,
+        dtype=var.dtype,
+        type=var.type,
+        lod_level=var.lod_level,
+        persistable=True)
 
 def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                token_num, predict):
@@ -344,9 +354,31 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         fluid.io.load_persistables(exe, TrainTaskConfig.ckpt_path)
         lr_scheduler.current_steps = TrainTaskConfig.start_step
     else:
-        #print "init fluid.framework.default_startup_program"
-        #debugger.draw_block_graphviz(fluid.framework.default_startup_program().global_block(), path="local_startup.dot")
+        """
+        dis_program = fluid.Program()
+        dis_block = dis_program.global_block()
+        for each_var in fluid.framework.default_startup_program().list_vars():
+            # NOTE: don't save the variable which type is RAW
+            if each_var.type == fluid.core.VarDesc.VarType.RAW:
+                continue
+            print each_var.name
+            new_var = _clone_var_in_block_(dis_block, each_var)
+            layers.Print(input=new_var, summarize=10, program=dis_program)
+
+        #print "init dis_program"
+        #debugger.draw_block_graphviz(dis_program.global_block(), path="dis.dot")
+
+        exe.run(dis_program)
         exe.run(fluid.framework.default_startup_program())
+        """
+
+        fetch_list=[]
+        for var in fluid.framework.default_startup_program().list_vars():
+            fetch_list.append(var.name)
+        outs = exe.run(fluid.framework.default_startup_program(), fetch_list=fetch_list)
+        assert(len(fetch_list) == len(outs))
+        for name, value in list(zip(fetch_list, outs)):
+            print name, value
 
     train_data = reader.DataReader(
         src_vocab_fpath=args.src_vocab_fpath,
@@ -397,6 +429,7 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
             total_num_token = 0
             if args.local:
                 lr_rate = lr_scheduler.update_learning_rate()
+            print "batch_id:", batch_id, ", learning_rate:", lr_rate
             for place_id, data_buffer in enumerate(
                     split_data(
                         data, num_part=dev_count)):
@@ -481,6 +514,7 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                   (pass_id, batch_id, total_sum_cost, total_avg_cost,
                    np.exp([min(total_avg_cost, 100)])))
             init = True
+            break
         # Validate and save the model for inference.
         print("epoch: %d, " % pass_id +
               ("val avg loss: %f, val ppl: %f, " % test()
@@ -516,6 +550,7 @@ def train(args):
         dev_count = fluid.core.get_cuda_device_count()
 
     exe = fluid.Executor(place)
+
 
     sum_cost, avg_cost, predict, token_num = transformer(
         ModelHyperParams.src_vocab_size, ModelHyperParams.trg_vocab_size,
@@ -580,6 +615,9 @@ def train(args):
         print("pserver_endpoints:", pserver_endpoints)
 
         trainers = int(os.getenv("PADDLE_TRAINERS_NUM", "0"))
+        if args.check_acc:
+            assert(trainers == 2)
+            assert(len(ps_ips) == 2)
         
         trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
         config = fluid.DistributeTranspilerConfig()
@@ -598,7 +636,17 @@ def train(args):
                                                     pserver_prog)
 
             print "psserver begin run"
-            exe.run(pserver_startup)
+            #exe.run(pserver_startup)
+            fetch_list=[]
+            for var in pserver_startup.list_vars():
+                if '@' not in var.name and var.persistable and 'tmp' not in var.name:
+                    print var.name
+                    fetch_list.append(var.name)
+            outs = exe.run(pserver_startup, fetch_list=fetch_list)
+            assert(len(fetch_list) == len(outs))
+            for name, value in list(zip(fetch_list, outs)):
+                print name, value
+
             exe.run(pserver_prog)
         elif training_role == "TRAINER":
             print "trainer begin run"

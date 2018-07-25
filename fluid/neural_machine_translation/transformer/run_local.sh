@@ -1,3 +1,6 @@
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64/:/usr/local/lib/:/workspace/brpc
+export PYTHONPATH=$PYTHONPATH:/paddle/build/build_develop/python
+
 CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.py \
   --src_vocab_fpath test_data/vocab.bpe.32000 \
   --trg_vocab_fpath test_data/vocab.bpe.32000 \
