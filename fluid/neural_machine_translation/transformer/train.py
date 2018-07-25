@@ -15,6 +15,8 @@ from config import *
 import reader
 from paddle.fluid import debugger
 
+import hashlib
+
 def parse_args():
     parser = argparse.ArgumentParser("Training for Transformer.")
     parser.add_argument(
@@ -267,10 +269,9 @@ def split_data(data, num_part):
     if len(data) == num_part:
         return data
     data = data[0]
-    print "data:", data
+    #print "data:", data
     inst_num_per_part = len(data) // num_part
-    print "data len:", len(data), " inst_num_per_part:", inst_num_per_part
-    #sys.exit(0)
+    #print "data len:", len(data), " inst_num_per_part:", inst_num_per_part
     return [
         data[inst_num_per_part * i:inst_num_per_part * (i + 1)]
         for i in range(num_part)
@@ -397,6 +398,54 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
             for place_id, data_buffer in enumerate(
                     split_data(
                         data, num_part=dev_count)):
+                if args.local:
+                    a0=[]
+                    a1=[]
+                    for i,x in enumerate(data_buffer):
+                        if i % 2 == 0:
+                            a0.append(x)
+                            continue
+                        a1.append(x)
+
+                    value=''
+                    for t in a0:
+                        for n in t:
+                            tmp = [str(i) for i in n]
+                            #print tmp
+                            value += ''.join(tmp)
+                    m = hashlib.md5()
+                    m.update(value)
+                    a0_m = m.hexdigest()
+
+                    value=''
+                    for t in a1:
+                        for n in t:
+                            tmp = [str(i) for i in n]
+                            value += ''.join(tmp)
+                    m = hashlib.md5()
+                    m.update(value)
+                    a1_m = m.hexdigest()
+
+                    #print "a0:", a0
+                    #print "a1:", a1
+                    print "batch_id:", batch_id, ", a0:", a0_m, ", a1:", a1_m
+                else:
+                    a=[]
+                    for i,x in enumerate(data_buffer):
+                        a.append(x)
+
+                    value=''
+                    for t in a:
+                        for n in t:
+                            tmp = [str(i) for i in n]
+                            value += ''.join(tmp)
+                    m = hashlib.md5()
+                    m.update(value)
+                    a_m = m.hexdigest()
+
+                    #print "a:", a
+                    print "batch_id:", batch_id, ", a:", a_m
+
                 data_input_dict, util_input_dict, num_token = prepare_batch_input(
                     data_buffer, data_input_names, util_input_names,
                     ModelHyperParams.eos_idx, ModelHyperParams.eos_idx,
@@ -532,7 +581,9 @@ def train(args):
         trainers = int(os.getenv("PADDLE_TRAINERS_NUM", "0"))
         
         trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
-        t = fluid.DistributeTranspiler()
+        config = fluid.DistributeTranspilerConfig()
+        config.slice_var_up = False
+        t = fluid.DistributeTranspiler(config=config)
         t.transpile(trainer_id, pservers=pserver_endpoints, trainers=trainers)
 
         if training_role == "PSERVER":

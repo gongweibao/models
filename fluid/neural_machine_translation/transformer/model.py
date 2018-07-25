@@ -198,7 +198,7 @@ def prepare_encoder(src_word,
         size=[src_vocab_size, src_emb_dim],
         param_attr=fluid.ParamAttr(
             name=word_emb_param_name,
-            initializer=fluid.initializer.Normal(0., src_emb_dim**-0.5)))
+            initializer=fluid.initializer.Normal(0., src_emb_dim**-0.5, seed=1)))
     src_word_emb = layers.scale(x=src_word_emb, scale=src_emb_dim**0.5)
     src_pos_enc = layers.embedding(
         src_pos,

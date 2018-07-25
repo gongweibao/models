@@ -19,7 +19,7 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --val_file_pattern test_data/newstest2013.tok.bpe.32000.en-de \
   --use_token_batch True \
   --batch_size 10 \
-  --sort_type pool \
+  --sort_type none \
   --pool_size 2000 \
   --shuffle False \
   --shuffle_batch False \
@@ -45,7 +45,7 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --val_file_pattern test_data/newstest2013.tok.bpe.32000.en-de \
   --use_token_batch True \
   --batch_size 10 \
-  --sort_type pool \
+  --sort_type none \
   --pool_size 2000 \
   --shuffle False \
   --shuffle_batch False \
@@ -72,7 +72,7 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --val_file_pattern test_data/newstest2013.tok.bpe.32000.en-de \
   --use_token_batch True \
   --batch_size 10 \
-  --sort_type pool \
+  --sort_type none \
   --pool_size 2000 \
   --shuffle False \
   --shuffle_batch False \
@@ -96,7 +96,7 @@ CUDA_VISIBLE_DEVICES=1 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --val_file_pattern test_data/newstest2013.tok.bpe.32000.en-de \
   --use_token_batch True \
   --batch_size 10 \
-  --sort_type pool \
+  --sort_type none \
   --pool_size 2000 \
   --shuffle False \
   --shuffle_batch False \
