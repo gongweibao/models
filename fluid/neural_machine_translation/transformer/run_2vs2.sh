@@ -24,6 +24,7 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --shuffle False \
   --shuffle_batch False \
   --pass_num 1 \
+  --device CPU \
   --use_token_batch False \
   --check_acc True  > pserver0.log 2>&1 &
 
@@ -50,11 +51,12 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --shuffle False \
   --shuffle_batch False \
   --pass_num 1 \
+  --device CPU \
   --use_token_batch False \
   --check_acc True  > pserver1.log 2>&1 &
 
 
-sleep 15s
+sleep 20s
 
 #train0
 export TRAINING_ROLE=TRAINER

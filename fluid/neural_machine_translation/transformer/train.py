@@ -374,11 +374,14 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
 
         fetch_list=[]
         for var in fluid.framework.default_startup_program().list_vars():
-            fetch_list.append(var.name)
+            if "fc_75.w_0" in var.name:
+                fetch_list.append(var.name)
         outs = exe.run(fluid.framework.default_startup_program(), fetch_list=fetch_list)
         assert(len(fetch_list) == len(outs))
         for name, value in list(zip(fetch_list, outs)):
             print name, value
+
+        #exe.run(fluid.framework.default_startup_program())
 
     train_data = reader.DataReader(
         src_vocab_fpath=args.src_vocab_fpath,
@@ -429,7 +432,7 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
             total_num_token = 0
             if args.local:
                 lr_rate = lr_scheduler.update_learning_rate()
-            print "batch_id:", batch_id, ", learning_rate:", lr_rate
+                print "batch_id:", batch_id, "step:", lr_scheduler.current_steps, ", learning_rate:", lr_rate
             for place_id, data_buffer in enumerate(
                     split_data(
                         data, num_part=dev_count)):
@@ -501,10 +504,27 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                             ModelHyperParams.d_model)
                         feed_list[place_id][pos_enc_param_name] = pos_enc
                 #print batch_id, place_id, feed_list
-            for feed_dict in feed_list:
-                feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
-            outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name],
-                                 feed=feed_list)
+            if not args.check_acc:
+                for feed_dict in feed_list:
+                    feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
+            else:
+                print "batch_size:", args.batch_size
+                b = 100*args.batch_size
+                a  = np.asarray([b], dtype="float32")
+                for feed_dict in feed_list:
+                    feed_dict[sum_cost.name + "@GRAD"] = 1. / a
+                print "total_num_token:",a 
+
+            if args.local:
+                outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name, "fc_75.w_0", "fc_75.w_0@GRAD"],
+                                     feed=feed_list)
+                print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
+                print "fc_75.w_0@GRAD", outs[3]
+            else:
+                outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name, "fc_75.w_0"],
+                                     feed=feed_list)
+                print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
+
             sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
             total_sum_cost = sum_cost_val.sum(
             )  # sum the cost from multi-devices
@@ -514,7 +534,8 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                   (pass_id, batch_id, total_sum_cost, total_avg_cost,
                    np.exp([min(total_avg_cost, 100)])))
             init = True
-            break
+            if batch_id == 3:
+                break
         # Validate and save the model for inference.
         print("epoch: %d, " % pass_id +
               ("val avg loss: %f, val ppl: %f, " % test()
@@ -636,17 +657,22 @@ def train(args):
                                                     pserver_prog)
 
             print "psserver begin run"
-            #exe.run(pserver_startup)
             fetch_list=[]
             for var in pserver_startup.list_vars():
-                if '@' not in var.name and var.persistable and 'tmp' not in var.name:
-                    print var.name
+                if "fc_75.w_0" in var.name and "@" not in var.name:
                     fetch_list.append(var.name)
             outs = exe.run(pserver_startup, fetch_list=fetch_list)
             assert(len(fetch_list) == len(outs))
             for name, value in list(zip(fetch_list, outs)):
                 print name, value
 
+            #print "pserver startup:", pserver_startup
+            #print "blocks num:", len(pserver_prog.blocks)
+            #print pserver_prog
+            #for b in pserver_prog.blocks:
+            #    debugger.draw_block_graphviz(dis_program.global_block(), path="dis.dot")
+
+            #exe.run(pserver_startup)
             exe.run(pserver_prog)
         elif training_role == "TRAINER":
             print "trainer begin run"
