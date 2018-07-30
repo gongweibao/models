@@ -303,9 +303,12 @@ def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
         shuffle=False,
         shuffle_batch=False)
 
+    strategy = fluid.ExecutionStrategy()
+    strategy.num_threads = 1
     test_exe = fluid.ParallelExecutor(
         use_cuda=TrainTaskConfig.use_gpu,
         main_program=test_program,
+        exec_strategy=strategy,
         share_vars_from=train_exe)
 
     def test(exe=test_exe):
@@ -378,8 +381,8 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                 fetch_list.append(var.name)
         outs = exe.run(fluid.framework.default_startup_program(), fetch_list=fetch_list)
         assert(len(fetch_list) == len(outs))
-        for name, value in list(zip(fetch_list, outs)):
-            print name, value
+        #for name, value in list(zip(fetch_list, outs)):
+        #    print name, value
 
         #exe.run(fluid.framework.default_startup_program())
 
@@ -408,10 +411,13 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
     # use token average cost among multi-devices. and the gradient scale is
     # `1 / token_number` for average cost.
     build_strategy.gradient_scale_strategy = fluid.BuildStrategy.GradientScaleStrategy.Customized
+    strategy = fluid.ExecutionStrategy()
+    strategy.num_threads = 1
     train_exe = fluid.ParallelExecutor(
         use_cuda=TrainTaskConfig.use_gpu,
         loss_name=sum_cost.name,
         main_program=train_progm,
+        exec_strategy=strategy,
         build_strategy=build_strategy)
 
     data_input_names = encoder_data_input_fields + decoder_data_input_fields[:
@@ -433,6 +439,9 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
             if args.local:
                 lr_rate = lr_scheduler.update_learning_rate()
                 print "pass_id:", pass_id, "batch_id:", batch_id, "step:", lr_scheduler.current_steps, ", learning_rate:", lr_rate
+            else:
+                print "pass_id:", pass_id, "batch_id:", batch_id
+
             for place_id, data_buffer in enumerate(
                     split_data(
                         data, num_part=dev_count)):
@@ -518,16 +527,18 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
             if args.local:
                 outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name, "fc_75.w_0", "fc_75.w_0@GRAD", "moment1_93", "moment2_93", "learning_rate"],
                                      feed=feed_list)
+                """
                 print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
                 print "fc_75.w_0@GRAD", outs[3]
                 print "moment1_93", outs[4]
                 print "moment2_93", outs[5]
+                """
                 print "learning_rate", outs[6]
 
             else:
                 outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name, "fc_75.w_0"],
                                      feed=feed_list)
-                print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
+                #print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
 
             sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
             total_sum_cost = sum_cost_val.sum(
@@ -538,9 +549,9 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                   (pass_id, batch_id, total_sum_cost, total_avg_cost,
                    np.exp([min(total_avg_cost, 100)])))
             init = True
-            #if batch_id == 2:
-            #    break
-        #break
+            if batch_id == 1:
+                break
+        break
         # Validate and save the model for inference.
         print("epoch: %d, " % pass_id +
               ("val avg loss: %f, val ppl: %f, " % test()
@@ -597,9 +608,9 @@ def train(args):
             beta1=TrainTaskConfig.beta1,
             beta2=TrainTaskConfig.beta2,
             epsilon=TrainTaskConfig.eps)
-        print "forward startup:", fluid.framework.default_startup_program()
+        #print "forward startup:", fluid.framework.default_startup_program()
         optimizer.minimize(sum_cost)
-        print "forward main:", fluid.framework.default_main_program()
+        #print "forward main:", fluid.framework.default_main_program()
         #fluid.memory_optimize(fluid.default_main_program())
     elif args.sync == False:
         optimizer = fluid.optimizer.SGD(0.003)

@@ -2,7 +2,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64/:/usr/local/lib/:/workspace/b
 export PYTHONPATH=$PYTHONPATH:/paddle/build/build_develop/python
 #export CPU_NUM=1
 
-CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.py \
+FLAGS_benchmark=true CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 GLOG_v=1 GLOG_logtostderr=1 python -u train.py \
   --src_vocab_fpath test_data/vocab.bpe.32000 \
   --trg_vocab_fpath test_data/vocab.bpe.32000 \
   --special_token '<s>' '<e>' '<unk>' \
@@ -17,4 +17,4 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --device GPU \
   --pass_num 1 \
   --use_token_batch False \
-  --check_acc True > local.log &
+  --check_acc True > local.log 2>&1 &

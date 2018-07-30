@@ -279,6 +279,7 @@ def split_data(data, num_part):
     ]
 
 
+"""
 def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
                  util_input_names, sum_cost, token_num):
     # Context to do validation.
@@ -328,6 +329,78 @@ def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
 
             outs = exe.run(feed=feed_list,
                            fetch_list=[sum_cost.name, token_num.name])
+            sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
+            test_total_cost += sum_cost_val.sum()
+            test_total_token += token_num_val.sum()
+        test_avg_cost = test_total_cost / test_total_token
+        test_ppl = np.exp([min(test_avg_cost, 100)])
+        return test_avg_cost, test_ppl
+
+    return test
+"""
+def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
+                 util_input_names, sum_cost, token_num):
+    # Context to do validation.
+    test_program = train_progm.clone()
+    with fluid.program_guard(test_program):
+        test_program = fluid.io.get_inference_program([avg_cost])
+
+    val_data = reader.DataReader(
+        src_vocab_fpath=args.src_vocab_fpath,
+        trg_vocab_fpath=args.trg_vocab_fpath,
+        fpattern=args.val_file_pattern,
+        use_token_batch=args.use_token_batch,
+        batch_size=args.batch_size * (1 if args.use_token_batch else dev_count),
+        pool_size=args.pool_size,
+        sort_type=args.sort_type,
+        start_mark=args.special_token[0],
+        end_mark=args.special_token[1],
+        unk_mark=args.special_token[2],
+        # count start and end tokens out
+        max_length=ModelHyperParams.max_length - 2,
+        clip_last_batch=False,
+        shuffle=False,
+        shuffle_batch=False)
+
+    # test_exe = fluid.ParallelExecutor(
+    #     use_cuda=TrainTaskConfig.use_gpu,
+    #     main_program=test_program,
+    #     share_vars_from=train_exe)
+
+    # def test(exe=test_exe):
+    def test(exe):
+        test_total_cost = 0
+        test_total_token = 0
+        # test_data = read_multiple(
+        #     reader=val_data.batch_generator,
+        #     count=dev_count if args.use_token_batch else 1)
+
+        for batch_id, data in enumerate(val_data.batch_generator()):
+            data_input_dict, util_input_dict, num_token = prepare_batch_input(
+                data, data_input_names, util_input_names,
+                ModelHyperParams.eos_idx, ModelHyperParams.eos_idx,
+                ModelHyperParams.n_head, ModelHyperParams.d_model)
+            feed_kv_pairs = data_input_dict.items() + util_input_dict.items()
+            outs = exe.run(
+                fluid.framework.default_main_program(),
+                feed=dict(feed_kv_pairs),
+                fetch_list=[sum_cost.name, token_num.name],
+                use_program_cache=True)
+
+            # for batch_id, data in enumerate(test_data()):
+            #     feed_list = []
+            #     for place_id, data_buffer in enumerate(
+            #             split_data(
+            #                 data, num_part=dev_count)):
+            #         data_input_dict, util_input_dict, _ = prepare_batch_input(
+            #             data_buffer, data_input_names, util_input_names,
+            #             ModelHyperParams.eos_idx, ModelHyperParams.eos_idx,
+            #             ModelHyperParams.n_head, ModelHyperParams.d_model)
+            #         feed_list.append(
+            #             dict(data_input_dict.items() + util_input_dict.items()))
+
+            #     outs = exe.run(feed=feed_list,
+            #                    fetch_list=[sum_cost.name, token_num.name])
             sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
             test_total_cost += sum_cost_val.sum()
             test_total_token += token_num_val.sum()
@@ -399,153 +472,48 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         # count start and end tokens out
         max_length=ModelHyperParams.max_length - 2,
         clip_last_batch=False)
-    train_data = read_multiple(
-        reader=train_data.batch_generator,
-        count=dev_count if args.use_token_batch else 1)
-
-    build_strategy = fluid.BuildStrategy()
-    # Since the token number differs among devices, customize gradient scale to
-    # use token average cost among multi-devices. and the gradient scale is
-    # `1 / token_number` for average cost.
-    build_strategy.gradient_scale_strategy = fluid.BuildStrategy.GradientScaleStrategy.Customized
-    train_exe = fluid.ParallelExecutor(
-        use_cuda=TrainTaskConfig.use_gpu,
-        loss_name=sum_cost.name,
-        main_program=train_progm,
-        build_strategy=build_strategy)
 
     data_input_names = encoder_data_input_fields + decoder_data_input_fields[:
                                                                              -1] + label_data_input_fields
     util_input_names = encoder_util_input_fields + decoder_util_input_fields
 
     if args.val_file_pattern is not None:
+        """
         test = test_context(train_progm, avg_cost, train_exe, dev_count,
                             data_input_names, util_input_names, sum_cost,
                             token_num)
-
-    init = False
-    for pass_id in xrange(args.pass_num):
+        """
+        test = test_context(train_progm, avg_cost, exe, dev_count,
+                            data_input_names, util_input_names, sum_cost,
+                            token_num)
+    for pass_id in xrange(TrainTaskConfig.pass_num):
         pass_start_time = time.time()
-        #print "train_data len:", len(train_data())
-        for batch_id, data in enumerate(train_data()):
-            feed_list = []
-            total_num_token = 0
+        for batch_id, data in enumerate(train_data.batch_generator()):
+            data_input_dict, util_input_dict, num_token = prepare_batch_input(
+                data, data_input_names, util_input_names,
+                ModelHyperParams.eos_idx, ModelHyperParams.eos_idx,
+                ModelHyperParams.n_head, ModelHyperParams.d_model)
+            lr_rate = lr_scheduler.update_learning_rate()
+            feed_kv_pairs = data_input_dict.items() + util_input_dict.items()
             if args.local:
-                lr_rate = lr_scheduler.update_learning_rate()
-                print "pass_id:", pass_id, "batch_id:", batch_id, "step:", lr_scheduler.current_steps, ", learning_rate:", lr_rate
-            for place_id, data_buffer in enumerate(
-                    split_data(
-                        data, num_part=dev_count)):
-                if args.local:
-                    a0=[]
-                    a1=[]
-                    for i,x in enumerate(data_buffer):
-                        if i % 2 == 0:
-                            a0.append(x)
-                            continue
-                        a1.append(x)
-
-                    value=''
-                    for t in a0:
-                        for n in t:
-                            tmp = [str(i) for i in n]
-                            #print tmp
-                            value += ''.join(tmp)
-                    m = hashlib.md5()
-                    m.update(value)
-                    a0_m = m.hexdigest()
-
-                    value=''
-                    for t in a1:
-                        for n in t:
-                            tmp = [str(i) for i in n]
-                            value += ''.join(tmp)
-                    m = hashlib.md5()
-                    m.update(value)
-                    a1_m = m.hexdigest()
-
-                    #print "a0:", a0
-                    #print "a1:", a1
-                    print "batch_id:", batch_id, ", a0:", a0_m, ", a1:", a1_m
-                else:
-                    a=[]
-                    for i,x in enumerate(data_buffer):
-                        a.append(x)
-
-                    value=''
-                    for t in a:
-                        for n in t:
-                            tmp = [str(i) for i in n]
-                            value += ''.join(tmp)
-                    m = hashlib.md5()
-                    m.update(value)
-                    a_m = m.hexdigest()
-
-                    #print "a:", a
-                    print "batch_id:", batch_id, ", a:", a_m
-
-                data_input_dict, util_input_dict, num_token = prepare_batch_input(
-                    data_buffer, data_input_names, util_input_names,
-                    ModelHyperParams.eos_idx, ModelHyperParams.eos_idx,
-                    ModelHyperParams.n_head, ModelHyperParams.d_model)
-                total_num_token += num_token
-                feed_kv_pairs = data_input_dict.items() + util_input_dict.items(
-                )
-                if args.local:
-                    feed_kv_pairs += {
-                        lr_scheduler.learning_rate.name: lr_rate
-                    }.items()
-                feed_list.append(dict(feed_kv_pairs))
-
-                if not init:
-                    for pos_enc_param_name in pos_enc_param_names:
-                        pos_enc = position_encoding_init(
-                            ModelHyperParams.max_length + 1,
-                            ModelHyperParams.d_model)
-                        feed_list[place_id][pos_enc_param_name] = pos_enc
-                #print batch_id, place_id, feed_list
-            if not args.check_acc:
-                for feed_dict in feed_list:
-                    feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
-            else:
-                print "batch_size:", args.batch_size
-                b = 100*args.batch_size
-                a  = np.asarray([b], dtype="float32")
-                for feed_dict in feed_list:
-                    feed_dict[sum_cost.name + "@GRAD"] = 1. / a
-                print "total_num_token:",a 
-
-            if args.local:
-                outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name, "fc_75.w_0", "fc_75.w_0@GRAD", "moment1_93", "moment2_93", "learning_rate"],
-                                     feed=feed_list)
-                print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
-                print "fc_75.w_0@GRAD", outs[3]
-                print "moment1_93", outs[4]
-                print "moment2_93", outs[5]
-                print "learning_rate", outs[6]
-
-            else:
-                outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name, "fc_75.w_0"],
-                                     feed=feed_list)
-                print "batch_id:", batch_id, ", fc_75.w_0", outs[2]
-
-            sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
-            total_sum_cost = sum_cost_val.sum(
-            )  # sum the cost from multi-devices
-            total_token_num = token_num_val.sum()
-            total_avg_cost = total_sum_cost / total_token_num
+                feed_kv_pairs += {
+                    lr_scheduler.learning_rate.name: lr_rate
+                }.items()
+            outs = exe.run(
+                fluid.framework.default_main_program(),
+                feed=dict(feed_kv_pairs),
+                fetch_list=[sum_cost, avg_cost],
+                use_program_cache=True)
+            sum_cost_val, avg_cost_val = np.array(outs[0]), np.array(outs[1])
             print("epoch: %d, batch: %d, sum loss: %f, avg loss: %f, ppl: %f" %
-                  (pass_id, batch_id, total_sum_cost, total_avg_cost,
-                   np.exp([min(total_avg_cost, 100)])))
-            init = True
-            #if batch_id == 2:
-            #    break
-        #break
-        # Validate and save the model for inference.
+                  (pass_id, batch_id, sum_cost_val, avg_cost_val,
+                   np.exp([min(avg_cost_val[0], 100)])))
+
         print("epoch: %d, " % pass_id +
-              ("val avg loss: %f, val ppl: %f, " % test()
+              ("val avg loss: %f, val ppl: %f, " % test(exe)
                if args.val_file_pattern is not None else "") + "consumed %fs" %
               (time.time() - pass_start_time))
+
         fluid.io.save_persistables(
             exe,
             os.path.join(TrainTaskConfig.ckpt_dir,
