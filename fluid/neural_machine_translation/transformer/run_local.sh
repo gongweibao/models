@@ -1,5 +1,6 @@
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64/:/usr/local/lib/:/workspace/brpc
 export PYTHONPATH=$PYTHONPATH:/paddle/build/build_develop/python
+#export CPU_NUM=1
 
 CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.py \
   --src_vocab_fpath test_data/vocab.bpe.32000 \
@@ -13,6 +14,7 @@ CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 python -u train.p
   --pool_size 2000 \
   --shuffle False \
   --shuffle_batch False \
+  --device GPU \
   --pass_num 1 \
   --use_token_batch False \
   --check_acc True > local.log &

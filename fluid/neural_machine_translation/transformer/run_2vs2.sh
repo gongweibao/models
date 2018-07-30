@@ -11,7 +11,7 @@ export PADDLE_IS_LOCAL=0
 export PADDLE_TRAINER_ID=0
 export PADDLE_PORT=6177,6178
 
-CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2  GLOG_v=3 GLOG_logtostderr=1 python -u train.py \
+CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2  GLOG_v=0 GLOG_logtostderr=1 python -u train.py \
   --src_vocab_fpath test_data/vocab.bpe.32000 \
   --trg_vocab_fpath test_data/vocab.bpe.32000 \
   --special_token '<s>' '<e>' '<unk>' \
@@ -38,7 +38,7 @@ export PADDLE_IS_LOCAL=0
 export PADDLE_TRAINER_ID=0
 export PADDLE_PORT=6177,6178
 
-CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 GLOG_v=4 GLOG_logtostderr=1 python -u train.py \
+CUDA_VISIBLE_DEVICES=0 FLAGS_fraction_of_gpu_memory_to_use=0.2 GLOG_v=0 GLOG_logtostderr=1 python -u train.py \
   --src_vocab_fpath test_data/vocab.bpe.32000 \
   --trg_vocab_fpath test_data/vocab.bpe.32000 \
   --special_token '<s>' '<e>' '<unk>' \
