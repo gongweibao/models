@@ -549,7 +549,7 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                   (pass_id, batch_id, total_sum_cost, total_avg_cost,
                    np.exp([min(total_avg_cost, 100)])))
             init = True
-            if batch_id == 1:
+            if batch_id == 4:
                 break
         break
         # Validate and save the model for inference.
@@ -608,9 +608,9 @@ def train(args):
             beta1=TrainTaskConfig.beta1,
             beta2=TrainTaskConfig.beta2,
             epsilon=TrainTaskConfig.eps)
-        #print "forward startup:", fluid.framework.default_startup_program()
+        print "forward startup:", fluid.framework.default_startup_program()
         optimizer.minimize(sum_cost)
-        #print "forward main:", fluid.framework.default_main_program()
+        print "forward main:", fluid.framework.default_main_program()
         #fluid.memory_optimize(fluid.default_main_program())
     elif args.sync == False:
         optimizer = fluid.optimizer.SGD(0.003)
@@ -629,8 +629,6 @@ def train(args):
         optimizer.minimize(sum_cost)
 
     if args.local:
-        print("local start_up:")
-        #print "local main:", fluid.default_main_program()
         train_loop(exe,
                    fluid.default_main_program(), dev_count, sum_cost, avg_cost,
                    lr_scheduler, token_num, predict)
@@ -714,5 +712,6 @@ if __name__ == "__main__":
         assert(not args.shuffle)
         assert(not args.shuffle_batch)
         assert(not args.use_token_batch)
+        TrainTaskConfig.check_acc=True
 
     train(args)

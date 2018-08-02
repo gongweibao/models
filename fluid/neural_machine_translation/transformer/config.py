@@ -30,6 +30,8 @@ class TrainTaskConfig(object):
     # It should be provided if use checkpoints, since the checkpoint doesn't
     # include the training step counter currently.
     start_step = 0
+    # To check accuracy only, not for normal train.
+    check_acc=False
 
 
 class InferTaskConfig(object):
