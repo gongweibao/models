@@ -385,7 +385,9 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
     init = False
     for pass_id in xrange(TrainTaskConfig.pass_num):
         pass_start_time = time.time()
+        print("pass_id:{0}".format(pass_id))
         for batch_id, data in enumerate(train_data()):
+            print("batch_id:{0} data_len:{1}".format(batch_id, len(data)))
             feed_list = []
             total_num_token = 0
             if args.local:

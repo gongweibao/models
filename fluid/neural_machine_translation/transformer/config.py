@@ -20,9 +20,9 @@ class TrainTaskConfig(object):
     # Set this as zero if label smoothing is not wanted.
     label_smooth_eps = 0.1
     # the directory for saving trained models.
-    model_dir = "trained_models"
+    model_dir = "output/trained_models"
     # the directory for saving checkpoints.
-    ckpt_dir = "trained_ckpts"
+    ckpt_dir = "output/trained_ckpts"
     # the directory for loading checkpoint.
     # If provided, continue training from the checkpoint.
     ckpt_path = None
