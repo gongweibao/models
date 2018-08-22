@@ -13,6 +13,8 @@ from config import *
 from model import transformer, position_encoding_init
 from optim import LearningRateScheduler
 
+import logging
+import sys
 
 def parse_args():
     parser = argparse.ArgumentParser("Training for Transformer.")
@@ -343,9 +345,10 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         fluid.io.load_persistables(exe, TrainTaskConfig.ckpt_path)
         lr_scheduler.current_steps = TrainTaskConfig.start_step
     else:
-        print "init fluid.framework.default_startup_program"
+        logging.info("init fluid.framework.default_startup_program")
         exe.run(fluid.framework.default_startup_program())
 
+    logging.info("begin reader")
     train_data = reader.DataReader(
         src_vocab_fpath=args.src_vocab_fpath,
         trg_vocab_fpath=args.trg_vocab_fpath,
@@ -363,6 +366,8 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         # count start and end tokens out
         max_length=ModelHyperParams.max_length - 2,
         clip_last_batch=False)
+
+    logging.info("begin read multiple")
     train_data = read_multiple(
         reader=train_data.batch_generator,
         count=dev_count if args.use_token_batch else 1)
@@ -393,12 +398,14 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
          )) + TrainTaskConfig.label_smooth_eps *
                         np.log(TrainTaskConfig.label_smooth_eps / (
                             ModelHyperParams.trg_vocab_size - 1) + 1e-20))
+    logging.info("begin train:")
     init = False
     for pass_id in xrange(TrainTaskConfig.pass_num):
         pass_start_time = time.time()
-        print("pass_id:{0}".format(pass_id))
+        logging.info("pass_id:{0}".format(pass_id))
+        avg_batch_time = time.time()
         for batch_id, data in enumerate(train_data()):
-            print("batch_id:{0} data_len:{1}".format(batch_id, len(data)))
+            logging.info("batch_id:{0} data_len:{1}".format(batch_id, len(data)))
             feed_list = []
             total_num_token = 0
             if args.local:
@@ -434,27 +441,36 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
             )  # sum the cost from multi-devices
             total_token_num = token_num_val.sum()
             total_avg_cost = total_sum_cost / total_token_num
-            print("epoch: %d, batch: %d, avg loss: %f, normalized loss: %f,"
+            logging.info("epoch: %d, batch: %d, avg loss: %f, normalized loss: %f,"
                   " ppl: %f" % (pass_id, batch_id, total_avg_cost,
                                 total_avg_cost - loss_normalizer,
                                 np.exp([min(total_avg_cost, 100)])))
+
+            if batch_id % 100 == 0 and batch_id > 0:
+                logging.info("speed: {0} batch/s".format(100.0/(time.time() - avg_batch_time)))
+
+            """
             if batch_id > 0 and batch_id % 1000 == 0:
                 fluid.io.save_persistables(
                     exe,
                     os.path.join(TrainTaskConfig.ckpt_dir, "latest.checkpoint"))
+            """
             init = True
+
+            if batch_id % 100 == 0 and batch_id > 0:
+                avg_batch_time=time.time()
 
         time_consumed = time.time() - pass_start_time
         # Validate and save the model for inference.
         if args.val_file_pattern is not None:
             val_avg_cost, val_ppl = test()
-            print(
+            logging.info(
                 "epoch: %d, val avg loss: %f, val normalized loss: %f, val ppl: %f,"
                 " consumed %fs" % (pass_id, val_avg_cost,
                                    val_avg_cost - loss_normalizer, val_ppl,
                                    time_consumed))
         else:
-            print("epoch: %d, consumed %fs" % (pass_id, time_consumed))
+            logging.info("epoch: %d, consumed %fs" % (pass_id, time_consumed))
         fluid.io.save_persistables(
             exe,
             os.path.join(TrainTaskConfig.ckpt_dir,
@@ -474,7 +490,7 @@ def train(args):
     is_local = os.getenv("PADDLE_IS_LOCAL", "1")
     if is_local == '0':
         args.local = False
-    print args
+    logging.info("args:", args)
 
     if args.device == 'CPU':
         TrainTaskConfig.use_gpu = False
@@ -528,7 +544,7 @@ def train(args):
         optimizer.minimize(sum_cost)
 
     if args.local:
-        print("local start_up:")
+        logging.info("local start_up:")
         train_loop(exe,
                    fluid.default_main_program(), dev_count, sum_cost, avg_cost,
                    lr_scheduler, token_num, predict)
@@ -549,17 +565,17 @@ def train(args):
             current_endpoint = os.getenv("POD_IP") + ":" + os.getenv(
                 "PADDLE_PORT")
             if not current_endpoint:
-                print("need env SERVER_ENDPOINT")
+                logging.critical("need env SERVER_ENDPOINT")
                 exit(1)
             pserver_prog = t.get_pserver_program(current_endpoint)
             pserver_startup = t.get_startup_program(current_endpoint,
                                                     pserver_prog)
 
-            print "psserver begin run"
-            with open('pserver_startup.desc', 'w') as f:
-                f.write(str(pserver_startup))
-            with open('pserver_prog.desc', 'w') as f:
-                f.write(str(pserver_prog))
+            logging.info("psserver begin run")
+            #with open('pserver_startup.desc', 'w') as f:
+            #    f.write(str(pserver_startup))
+            #with open('pserver_prog.desc', 'w') as f:
+            #    f.write(str(pserver_prog))
             exe.run(pserver_startup)
             exe.run(pserver_prog)
         elif training_role == "TRAINER":
@@ -570,9 +586,13 @@ def train(args):
             train_loop(exe, trainer_prog, dev_count, sum_cost, avg_cost,
                        lr_scheduler, token_num, predict)
         else:
-            print("environment var TRAINER_ROLE should be TRAINER os PSERVER")
+            logging.info("environment var TRAINER_ROLE should be TRAINER os PSERVER")
 
 
 if __name__ == "__main__":
+    import logging
+    LOG_FORMAT = "[%(asctime)s %(levelname)s %(filename)s:%(lineno)d] %(message)s"
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format=LOG_FORMAT)
+
     args = parse_args()
     train(args)
