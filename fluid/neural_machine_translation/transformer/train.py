@@ -490,7 +490,7 @@ def train(args):
     is_local = os.getenv("PADDLE_IS_LOCAL", "1")
     if is_local == '0':
         args.local = False
-    logging.info("args:", args)
+    logging.info("args:{}".format(args))
 
     if args.device == 'CPU':
         TrainTaskConfig.use_gpu = False

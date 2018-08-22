@@ -1,3 +1,4 @@
+import logging
 class TrainTaskConfig(object):
     # only support GPU currently
     use_gpu = True
@@ -92,6 +93,7 @@ def merge_cfg_from_list(cfg_list, g_cfgs):
     """
     Set the above global configurations using the cfg_list. 
     """
+    logging.debug("cfg_list:{}".format(cfg_list))
     assert len(cfg_list) % 2 == 0
     for key, value in zip(cfg_list[0::2], cfg_list[1::2]):
         for g_cfg in g_cfgs:
