@@ -517,12 +517,10 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
 
                 logging.info("speed: {0} batch/s".format(100.0/(time.time() - avg_batch_time)))
 
-            """
             if batch_id > 0 and batch_id % 1000 == 0:
                 fluid.io.save_persistables(
                     exe,
                     os.path.join(TrainTaskConfig.ckpt_dir, "latest.checkpoint"))
-            """
             init = True
 
             if batch_id % 100 == 0 and batch_id > 0:
@@ -628,6 +626,9 @@ def train(args):
         trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
 
         if args.update_method == "nccl2":
+            if trainer_id == 0:
+                logging.info("train_id == 0, sleep 60s")
+                time.sleep(60)
             append_nccl2_prepare(trainer_id, eplist, current_endpoint)
             train_loop(exe, fluid.default_main_program(), dev_count, sum_cost, avg_cost,
                        lr_scheduler, token_num, predict, trainers, trainer_id)
