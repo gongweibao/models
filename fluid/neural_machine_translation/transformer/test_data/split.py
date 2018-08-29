@@ -1,18 +1,24 @@
-no=0
-lines=[]
-lines.append([])
-lines.append([])
-with open("./train.tok.clean.bpe.32000.en-de") as f:
-    for line in f:
-        lines[no % 2].append(line)
-        no+=1
+def load_line(fname):
+    with open(fname) as f:
+        for line_no, line in enumerate(f):
+            yield line_no, line
 
-print len(lines[0]), len(lines[1])
+def get_fname(fname, fno):
+    return "%s_%.3d" % (fname, fno)
 
-with open("./train.tok.clean.bpe.32000.en-de.train_0", "w") as f:
-    for line in lines[0]:
-        f.write(line)
+def split_file(fname, file_nums):
+    fhs = []
+    for i in range(0, file_nums):
+        fhs.append(None)
 
-with open("./train.tok.clean.bpe.32000.en-de.train_1", "w") as f:
-    for line in lines[1]:
-        f.write(line)
+    for line_no, line in load_line(fname):
+        fno = line_no % file_nums
+        if fhs[fno] is None:
+            fhs[fno] = open(get_fname(fname, fno), "wb")
+        
+        fhs[fno].write(line)
+
+    for i in range(0, file_nums):
+        fhs[i].close()
+
+split_file("train.tok.clean.bpe.32000.en-de", 36)
