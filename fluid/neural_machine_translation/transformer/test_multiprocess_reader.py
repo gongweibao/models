@@ -6,13 +6,13 @@ class TestReader(unittest.TestCase):
     def test_multiprocess(self):
         config = ReaderConfig()
 
-        config.src_vocab_fpath="./test_data/vocab.bpe.32000"
-        config.trg_vocab_fpath="./test_data/vocab.bpe.32000"
-        config.fpattern="./test_data/train.tok.clean.bpe.32000.en-de_*"
-        #token_delimiter=args.token_delimiter,
+        config.src_vocab_fpath="./test_en_fr/vocab.wordpiece.en-fr"
+        config.trg_vocab_fpath="./test_en_fr/vocab.wordpiece.en-fr"
+        config.fpattern="./test_en_fr/train.wordpiece.en-fr_*"
+        token_delimiter="\x01"
         #use_token_batch=args.use_token_batch,
         config.batch_size=2048
-        config.pool_size=10000
+        config.pool_size=200000
         config.sort_type="pool"
         config.shuffle=True
         config.shuffle_batch=True

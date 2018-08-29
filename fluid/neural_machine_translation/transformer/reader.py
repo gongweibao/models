@@ -188,6 +188,7 @@ class DataReader(object):
                     yield fields
         else:
             for fpath in fpaths:
+                print("open file:", fpath)
                 if not os.path.isfile(fpath):
                     raise IOError("Invalid file: %s" % fpath)
 
@@ -326,7 +327,12 @@ class MultiProcessReader(object):
             print(i, len(rets[i].get_sample_infos()))
 
 def load_data_in_process(config):
+    if len(config.fpattern) < 1:
+        print("task set without input files so return")
+        return None
+
     reader=DataReader(config)
+    print("proc {} complete".format(config.fpattern))
     return reader
 
 
