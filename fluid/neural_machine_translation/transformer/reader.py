@@ -102,111 +102,38 @@ class DataReader(object):
     is shuffled in each pass and sorted in each pool:
 
     ```
-    train_data = DataReader(
-        src_vocab_fpath='data/src_vocab_file',
-        trg_vocab_fpath='data/trg_vocab_file',
-        fpattern='data/part-*',
-        use_token_batch=True,
-        batch_size=2000,
-        pool_size=10000,
-        sort_type=SortType.POOL,
-        shuffle=True,
-        shuffle_batch=True,
-        start_mark='<s>',
-        end_mark='<e>',
-        unk_mark='<unk>',
-        clip_last_batch=False).batch_generator
-    ```
+    config = ReaderConfig()
+    config.src_vocab_fpath='data/src_vocab_file',
+    config.trg_vocab_fpath='data/trg_vocab_file',
+    config.fpattern='data/part-*',
+    config.use_token_batch=True,
+    config.batch_size=2000,
+    config.pool_size=10000,
+    config.sort_type=SortType.POOL,
 
-    :param src_vocab_fpath: The path of vocabulary file of source language.
-    :type src_vocab_fpath: basestring
-    :param trg_vocab_fpath: The path of vocabulary file of target language.
-    :type trg_vocab_fpath: basestring
-    :param fpattern: The pattern to match data files.
-    :type fpattern: basestring
-    :param batch_size: The number of sequences contained in a mini-batch.
-        or the maximum number of tokens (include paddings) contained in a
-        mini-batch.
-    :type batch_size: int
-    :param pool_size: The size of pool buffer.
-    :type pool_size: int
-    :param sort_type: The grain to sort by length: 'global' for all
-        instances; 'pool' for instances in pool; 'none' for no sort.
-    :type sort_type: basestring
-    :param clip_last_batch: Whether to clip the last uncompleted batch.
-    :type clip_last_batch: bool
-    :param tar_fname: The data file in tar if fpattern matches a tar file.
-    :type tar_fname: basestring
-    :param min_length: The minimum length used to filt sequences.
-    :type min_length: int
-    :param max_length: The maximum length used to filt sequences.
-    :type max_length: int
-    :param shuffle: Whether to shuffle all instances.
-    :type shuffle: bool
-    :param shuffle_batch: Whether to shuffle the generated batches.
-    :type shuffle_batch: bool
-    :param use_token_batch: Whether to produce batch data according to
-        token number.
-    :type use_token_batch: bool
-    :param field_delimiter: The delimiter used to split source and target in
-        each line of data file.
-    :type field_delimiter: basestring
-    :param token_delimiter: The delimiter used to split tokens in source or
-        target sentences.
-    :type token_delimiter: basestring
-    :param start_mark: The token representing for the beginning of
-        sentences in dictionary.
-    :type start_mark: basestring
-    :param end_mark: The token representing for the end of sentences
-        in dictionary.
-    :type end_mark: basestring
-    :param unk_mark: The token representing for unknown word in dictionary.
-    :type unk_mark: basestring
-    :param seed: The seed for random.
-    :type seed: int
+    reader = DataReader(config=config)
+    reader.load_data()
+    train_data = reader.batch_generator()
+    ```
     """
 
-    def __init__(self,
-                 src_vocab_fpath,
-                 trg_vocab_fpath,
-                 fpattern,
-                 batch_size,
-                 pool_size,
-                 sort_type=SortType.GLOBAL,
-                 clip_last_batch=True,
-                 tar_fname=None,
-                 min_length=0,
-                 max_length=100,
-                 shuffle=True,
-                 shuffle_batch=False,
-                 use_token_batch=False,
-                 field_delimiter="\t",
-                 token_delimiter=" ",
-                 start_mark="<s>",
-                 end_mark="<e>",
-                 unk_mark="<unk>",
-                 seed=0):
-        self._src_vocab = self.load_dict(src_vocab_fpath)
-        self._only_src = True
-        if trg_vocab_fpath is not None:
-            self._trg_vocab = self.load_dict(trg_vocab_fpath)
-            self._only_src = False
-        self._pool_size = pool_size
-        self._batch_size = batch_size
-        self._use_token_batch = use_token_batch
-        self._sort_type = sort_type
-        self._clip_last_batch = clip_last_batch
-        self._shuffle = shuffle
-        self._shuffle_batch = shuffle_batch
-        self._min_length = min_length
-        self._max_length = max_length
-        self._field_delimiter = field_delimiter
-        self._token_delimiter = token_delimiter
-        self.load_src_trg_ids(end_mark, fpattern, start_mark, tar_fname,
-                              unk_mark)
-        self._random = random.Random(x=seed)
 
-    def load_src_trg_ids(self, end_mark, fpattern, start_mark, tar_fname,
+    def __init__(self, config):
+        self._config = config
+        self._random = random.Random(x=config.seed)
+        self._sample_infos = []
+
+    def load_data(self):
+        self._src_vocab = self.load_dict(self._config.src_vocab_fpath)
+        self._only_src = True
+        if self._config.trg_vocab_fpath is not None:
+            self._trg_vocab = self.load_dict(self._config.trg_vocab_fpath)
+            self._only_src = False
+
+        self._load_src_trg_ids(self._config.end_mark, 
+                self._config.fpattern, self._config.start_mark, self._config.tar_fname, self._config.unk_mark)
+
+    def _load_src_trg_ids(self, end_mark, fpattern, start_mark, tar_fname,
                          unk_mark):
         converters = [
             Converter(
@@ -214,7 +141,7 @@ class DataReader(object):
                 beg=self._src_vocab[start_mark],
                 end=self._src_vocab[end_mark],
                 unk=self._src_vocab[unk_mark],
-                delimiter=self._token_delimiter)
+                delimiter=self._config.token_delimiter)
         ]
         if not self._only_src:
             converters.append(
@@ -223,7 +150,7 @@ class DataReader(object):
                     beg=self._trg_vocab[start_mark],
                     end=self._trg_vocab[end_mark],
                     unk=self._trg_vocab[unk_mark],
-                    delimiter=self._token_delimiter))
+                    delimiter=self._config.token_delimiter))
 
         converters = ComposedConverter(converters)
 
@@ -240,8 +167,14 @@ class DataReader(object):
                 lens.append(len(src_trg_ids[1]))
             self._sample_infos.append(SampleInfo(i, max(lens), min(lens)))
 
+    def get_sample_infos(self):
+        return self._sample_infos
+
     def _load_lines(self, fpattern, tar_fname):
-        fpaths = glob.glob(fpattern)
+        if isinstance(fpattern, list):
+            fpaths = fpattern
+        else:
+            fpaths = glob.glob(fpattern)
 
         if len(fpaths) == 1 and tarfile.is_tarfile(fpaths[0]):
             if tar_fname is None:
@@ -249,7 +182,7 @@ class DataReader(object):
 
             f = tarfile.open(fpaths[0], "r")
             for line in f.extractfile(tar_fname):
-                fields = line.strip("\n").split(self._field_delimiter)
+                fields = line.strip("\n").split(self._config.field_delimiter)
                 if (not self._only_src and len(fields) == 2) or (
                         self._only_src and len(fields) == 1):
                     yield fields
@@ -260,7 +193,7 @@ class DataReader(object):
 
                 with open(fpath, "r") as f:
                     for line in f:
-                        fields = line.strip("\n").split(self._field_delimiter)
+                        fields = line.strip("\n").split(self._config.field_delimiter)
                         if (not self._only_src and len(fields) == 2) or (
                                 self._only_src and len(fields) == 1):
                             yield fields
@@ -320,3 +253,81 @@ class DataReader(object):
             else:
                 yield [(self._src_seq_ids[idx], self._trg_seq_ids[idx][:-1],
                         self._trg_seq_ids[idx][1:]) for idx in batch_ids]
+
+class ReaderConfig(object):
+    """
+    Attributes:
+        src_vocab_fpath(str): The path of vocabulary file of source language.
+        trg_vocab_fpath(str): The path of vocabulary file of target language.
+        fpattern(str|list): The pattern to match data files.
+        batch_size(int): The number of sequences contained in a mini-batch or the maximum number of tokens (include paddings) contained in a mini-batch.
+        pool_size(int): The size of pool buffer.
+        sort_type(str): The grain to sort by length: 'global' for all instances; 'pool' for instances in pool; 'none' for no sort.
+        clip_last_batch(bool): Whether to clip the last uncompleted batch.
+        tar_fname(str): The data file in tar if fpattern matches a tar file.
+        min_length(int): The minimum length used to filt sequences.
+        max_length(int): The maximum length used to filt sequences.
+        shuffle(bool): Whether to shuffle all instances.
+        shuffle_batch(bool): Whether to shuffle the generated batches.
+        use_token_batch(bool): Whether to produce batch data according to token number.
+        field_delimiter(str): The delimiter used to split source and target in each line of data file.
+        token_delimiter(str): The delimiter used to split tokens in source or target sentences.
+        start_mark(str): The token representing for the beginning of sentences in dictionary.
+        end_mark(str): The token representing for the end of sentences in dictionary.
+        unk_mark(str): The token representing for unknown word in dictionary.
+        seed(int): The seed for random.
+    """
+
+    src_vocab_fpath = None
+    trg_vocab_fpath = None
+    fpattern        = None
+    batch_size      = None
+    pool_size       = None
+    sort_type       = SortType.GLOBAL,
+    clip_last_batch = True
+    tar_fname       = None
+    min_length      = 0
+    max_length      = 100
+    shuffle         = True
+    shuffle_batch   = True
+    use_token_batch = True
+    field_delimiter = "\t"
+    token_delimiter = " "
+    start_mark      = "<s>"
+    end_mark        = "<e>"
+    unk_mark        = "<unk>"
+    seed            = 0
+
+import multiprocessing
+import math
+class MultiProcessReader(object):
+    def __init__(self, config):
+        if isinstance(config.fpattern, list):
+            fpaths = config.fpattern
+        else:
+            fpaths = glob.glob(config.fpattern)
+
+        assert len(fpaths) > 0, "no input files"
+
+        processes = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(processes=processes)
+        size = int(math.ceil(float(len(fpaths)) / processes))
+
+        split_fpaths = [fpaths[i * size:(i + 1) * size] for i in range(processes)]
+        readers = []
+        for i in range(processes):
+            readers.append(reader)
+
+        pool.map(load_data_in_process, readers)
+
+        for i in range(processes):
+            print(i, len(reader.get_sample_infos))
+            if len(readers[i].get_sample_infos()) > 0:
+                print(i, len(readers[i].get_sample_infos()))
+
+def load_data_in_process(fpaths, config):
+    print(reader)
+    reader.load_data()
+    print(len(reader.get_sample_infos()))
+
+
