@@ -123,7 +123,7 @@ class DataReader(object):
         self._random = random.Random(x=config.seed)
         self._sample_infos = []
 
-    def load_data(self):
+        #def load_data(self):
         self._src_vocab = self.load_dict(self._config.src_vocab_fpath)
         self._only_src = True
         if self._config.trg_vocab_fpath is not None:
@@ -315,21 +315,18 @@ class MultiProcessReader(object):
         pool = multiprocessing.Pool(processes=processes)
         size = int(math.ceil(float(len(fpaths)) / processes))
 
-        split_fpaths = [fpaths[i * size:(i + 1) * size] for i in range(processes)]
-        #print(sorted(split_fpaths))
-        readers = []
+        configs = []
         for i in range(processes):
             conf = copy.deepcopy(config)
-            conf.fpattern = split_fpaths[i]
-            reader=DataReader(conf)
-            readers.append(reader)
+            conf.fpattern = fpaths[i * size:(i + 1) * size]
+            configs.append(conf)
 
-        rets = pool.map(load_data_in_process, readers)
+        rets = pool.map(load_data_in_process, configs)
         for i in range(processes):
             print(i, len(rets[i].get_sample_infos()))
 
-def load_data_in_process(reader):
-    reader.load_data()
+def load_data_in_process(config):
+    reader=DataReader(config)
     return reader
 
 
