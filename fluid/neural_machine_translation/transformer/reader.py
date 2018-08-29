@@ -300,6 +300,7 @@ class ReaderConfig(object):
 
 import multiprocessing
 import math
+import copy
 class MultiProcessReader(object):
     def __init__(self, config):
         if isinstance(config.fpattern, list):
@@ -308,26 +309,27 @@ class MultiProcessReader(object):
             fpaths = glob.glob(config.fpattern)
 
         assert len(fpaths) > 0, "no input files"
+        #print(sorted(fpaths))
 
         processes = multiprocessing.cpu_count()
         pool = multiprocessing.Pool(processes=processes)
         size = int(math.ceil(float(len(fpaths)) / processes))
 
         split_fpaths = [fpaths[i * size:(i + 1) * size] for i in range(processes)]
+        #print(sorted(split_fpaths))
         readers = []
         for i in range(processes):
+            conf = copy.deepcopy(config)
+            conf.fpattern = split_fpaths[i]
+            reader=DataReader(conf)
             readers.append(reader)
 
-        pool.map(load_data_in_process, readers)
-
+        rets = pool.map(load_data_in_process, readers)
         for i in range(processes):
-            print(i, len(reader.get_sample_infos))
-            if len(readers[i].get_sample_infos()) > 0:
-                print(i, len(readers[i].get_sample_infos()))
+            print(i, len(rets[i].get_sample_infos()))
 
-def load_data_in_process(fpaths, config):
-    print(reader)
+def load_data_in_process(reader):
     reader.load_data()
-    print(len(reader.get_sample_infos()))
+    return reader
 
 
