@@ -133,9 +133,11 @@ class DataReader(object):
             self._trg_vocab = self.load_dict(self._config.trg_vocab_fpath)
             self._only_src = False
 
-        self._src_seq_ids = []
-        self._trg_seq_ids = None if self._only_src else []
-        self._sample_infos = []
+        self._src_seq_ids  = [None] * 50000000
+        self._trg_seq_ids  = [None] * 50000000
+        self._sample_infos = [None] * 50000000
+
+        logging.debug("src_trg_ids len {}".format(len(self._src_seq_ids)))
 
     def load_data(self):
         if isinstance(self._config.fpattern, list):
@@ -144,7 +146,7 @@ class DataReader(object):
             fpaths = glob.glob(self._config.fpattern)
         assert len(fpaths) > 0, "no input files"
 
-        q = multiprocessing.Queue()
+        q = multiprocessing.Queue(maxsize=1000000)
         if self._config.process_num <= 0:
             processes = multiprocessing.cpu_count()
         else:
@@ -167,22 +169,32 @@ class DataReader(object):
             if done_num >= processes:
                 logging.info("all process done")
                 break
-            src_trg_ids = q.get()
 
+            src_trg_ids = q.get()
             if src_trg_ids is None:
                 done_num += 1
                 continue
 
-            self._src_seq_ids.append(src_trg_ids[0])
+            self._src_seq_ids[idx] = src_trg_ids[0]
             lens = [len(src_trg_ids[0])]
             if not self._only_src:
-                self._trg_seq_ids.append(src_trg_ids[1])
+                self._trg_seq_ids[idx] = src_trg_ids[1]
                 lens.append(len(src_trg_ids[1]))
-            self._sample_infos.append(SampleInfo(idx, max(lens), min(lens)))
+            self._sample_infos[idx] = SampleInfo(idx, max(lens), min(lens))
             idx+=1
 
         for i in range(processes):
             procs[i].join()
+
+
+        logging.debug("src_trg_ids len2 {}".format(len(self._src_seq_ids)))
+
+        a_len= len(self._src_seq_ids)
+        del self._src_seq_ids[idx:a_len]
+        del self._trg_seq_ids[idx:a_len]
+        del self._sample_infos[idx:a_len]
+
+        logging.debug("src_trg_ids len3 {}".format(len(self._src_seq_ids)))
 
     def _load_src_trg_ids(self, q):
         converters = [
