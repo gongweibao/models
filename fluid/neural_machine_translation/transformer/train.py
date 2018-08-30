@@ -366,6 +366,7 @@ def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
     config.clip_last_batch=False
     config.shuffle=False
     config.shuffle_batch=False
+    config.process_num = 1
 
     val_data = reader.DataReader(config)
     val_data.load_data()

@@ -7,6 +7,7 @@ import cPickle
 import multiprocessing
 import math
 import copy
+import logging
 
 class SortType(object):
     GLOBAL = 'global'
@@ -140,7 +141,6 @@ class DataReader(object):
         if isinstance(self._config.fpattern, list):
             fpaths = self._config.fpattern
         else:
-            print("fpattren:", self._config.fpattern)
             fpaths = glob.glob(self._config.fpattern)
         assert len(fpaths) > 0, "no input files"
 
@@ -165,7 +165,7 @@ class DataReader(object):
         idx=0
         while True:
             if done_num >= processes:
-                print("recv one done")
+                logging.info("all process done")
                 break
             src_trg_ids = q.get()
 
@@ -233,7 +233,7 @@ class DataReader(object):
                     yield fields
         else:
             for fpath in fpaths:
-                print("open file:", fpath)
+                logging.debug("open file:{}".format(fpath))
                 if not os.path.isfile(fpath):
                     raise IOError("Invalid file: %s" % fpath)
 
@@ -376,13 +376,13 @@ class MultiProcessReader(object):
 
 def load_data_in_process(config, q):
     if len(config.fpattern) < 1:
-        print("task set without input files so return")
+        logging.debug("task set without input files so return")
         q.put(None)
         return
 
     reader=DataReader(config)
     reader._load_src_trg_ids(q)
-    print("proc {} complete".format(config.fpattern))
+    logging.debug("proc {} complete".format(config.fpattern))
     return
 
 
