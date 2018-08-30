@@ -324,6 +324,8 @@ class MultiProcessReader(object):
 
         rets = pool.map(load_data_in_process, configs)
         for i in range(processes):
+            if rets[i] is None:
+                continue
             print(i, len(rets[i].get_sample_infos()))
 
 def load_data_in_process(config):
