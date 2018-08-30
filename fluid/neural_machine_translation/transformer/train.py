@@ -349,23 +349,26 @@ def test_context(train_progm, avg_cost, train_exe, dev_count, data_input_names,
     with fluid.program_guard(test_program):
         test_program = fluid.io.get_inference_program([avg_cost])
 
-    val_data = reader.DataReader(
-        src_vocab_fpath=args.src_vocab_fpath,
-        trg_vocab_fpath=args.trg_vocab_fpath,
-        fpattern=args.val_file_pattern,
-        token_delimiter=args.token_delimiter,
-        use_token_batch=args.use_token_batch,
-        batch_size=args.batch_size * (1 if args.use_token_batch else dev_count),
-        pool_size=args.pool_size,
-        sort_type=args.sort_type,
-        start_mark=args.special_token[0],
-        end_mark=args.special_token[1],
-        unk_mark=args.special_token[2],
-        # count start and end tokens out
-        max_length=ModelHyperParams.max_length - 2,
-        clip_last_batch=False,
-        shuffle=False,
-        shuffle_batch=False)
+    config = reader.ReaderConfig()
+    config.src_vocab_fpath=args.src_vocab_fpath
+    config.trg_vocab_fpath=args.trg_vocab_fpath
+    config.fpattern=args.val_file_pattern
+    config.token_delimiter=args.token_delimiter
+    config.use_token_batch=args.use_token_batch
+    config.batch_size=args.batch_size * (1 if args.use_token_batch else dev_count)
+    config.pool_size=args.pool_size
+    config.sort_type=args.sort_type
+    config.start_mark=args.special_token[0]
+    config.end_mark=args.special_token[1]
+    config.unk_mark=args.special_token[2]
+    # count start and end tokens out
+    config.max_length=ModelHyperParams.max_length - 2
+    config.clip_last_batch=False
+    config.shuffle=False
+    config.shuffle_batch=False
+
+    val_data = reader.DataReader(config)
+    val_data.load_data()
 
     test_exe = fluid.ParallelExecutor(
         use_cuda=TrainTaskConfig.use_gpu,
@@ -413,23 +416,26 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
         exe.run(fluid.framework.default_startup_program())
 
     logging.info("begin reader")
-    train_data = reader.DataReader(
-        src_vocab_fpath=args.src_vocab_fpath,
-        trg_vocab_fpath=args.trg_vocab_fpath,
-        fpattern=args.train_file_pattern,
-        token_delimiter=args.token_delimiter,
-        use_token_batch=args.use_token_batch,
-        batch_size=args.batch_size * (1 if args.use_token_batch else dev_count),
-        pool_size=args.pool_size,
-        sort_type=args.sort_type,
-        shuffle=args.shuffle,
-        shuffle_batch=args.shuffle_batch,
-        start_mark=args.special_token[0],
-        end_mark=args.special_token[1],
-        unk_mark=args.special_token[2],
-        # count start and end tokens out
-        max_length=ModelHyperParams.max_length - 2,
-        clip_last_batch=False)
+    config = reader.ReaderConfig()
+    config.src_vocab_fpath=args.src_vocab_fpath
+    config.trg_vocab_fpath=args.trg_vocab_fpath
+    config.fpattern=args.train_file_pattern
+    config.token_delimiter=args.token_delimiter
+    config.use_token_batch=args.use_token_batch
+    config.batch_size=args.batch_size * (1 if args.use_token_batch else dev_count)
+    config.pool_size=args.pool_size
+    config.sort_type=args.sort_type
+    config.start_mark=args.special_token[0]
+    config.end_mark=args.special_token[1]
+    config.unk_mark=args.special_token[2]
+    # count start and end tokens out
+    config.max_length=ModelHyperParams.max_length - 2
+    config.clip_last_batch=False
+    config.shuffle=args.shuffle
+    config.shuffle_batch=args.shuffle_batch
+
+    train_data = reader.DataReader(config)
+    train_data.load_data()
 
     logging.info("begin read multiple")
     train_data = read_multiple(

@@ -140,6 +140,7 @@ class DataReader(object):
         if isinstance(self._config.fpattern, list):
             fpaths = self._config.fpattern
         else:
+            print("fpattren:", self._config.fpattern)
             fpaths = glob.glob(self._config.fpattern)
         assert len(fpaths) > 0, "no input files"
 
@@ -204,7 +205,7 @@ class DataReader(object):
         converters = ComposedConverter(converters)
 
         for i, line in enumerate(self._load_lines(self._config.fpattern, self._config.tar_fname)):
-            if len(line.strip()) <= 0:
+            if len(line) <= 0:
                 continue
 
             src_trg_ids = converters(line)
@@ -256,27 +257,27 @@ class DataReader(object):
 
     def batch_generator(self):
         # global sort or global shuffle
-        if self._sort_type == SortType.GLOBAL:
+        if self._config.sort_type == SortType.GLOBAL:
             infos = sorted(
                 self._sample_infos, key=lambda x: x.max_len, reverse=True)
         else:
-            if self._shuffle:
+            if self._config._shuffle:
                 infos = self._sample_infos
                 self._random.shuffle(infos)
             else:
                 infos = self._sample_infos
 
-            if self._sort_type == SortType.POOL:
-                for i in range(0, len(infos), self._pool_size):
-                    infos[i:i + self._pool_size] = sorted(
-                        infos[i:i + self._pool_size], key=lambda x: x.max_len)
+            if self._config.sort_type == SortType.POOL:
+                for i in range(0, len(infos), self._cofig.pool_size):
+                    infos[i:i + self._config.pool_size] = sorted(
+                        infos[i:i + self._config.pool_size], key=lambda x: x.max_len)
 
         # concat batch
         batches = []
         batch_creator = TokenBatchCreator(
-            self._batch_size
-        ) if self._use_token_batch else SentenceBatchCreator(self._batch_size)
-        batch_creator = MinMaxFilter(self._max_length, self._min_length,
+            self._config.batch_size
+        ) if self._config.use_token_batch else SentenceBatchCreator(self._config.batch_size)
+        batch_creator = MinMaxFilter(self._config.max_length, self._config.min_length,
                                      batch_creator)
 
         for info in infos:
@@ -284,10 +285,10 @@ class DataReader(object):
             if batch is not None:
                 batches.append(batch)
 
-        if not self._clip_last_batch and len(batch_creator.batch) != 0:
+        if not self._config.clip_last_batch and len(batch_creator.batch) != 0:
             batches.append(batch_creator.batch)
 
-        if self._shuffle_batch:
+        if self._config.shuffle_batch:
             self._random.shuffle(batches)
 
         for batch in batches:
