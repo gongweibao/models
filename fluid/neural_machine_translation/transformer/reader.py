@@ -146,9 +146,10 @@ class DataReader(object):
             fpaths = glob.glob(self._config.fpattern)
         assert len(fpaths) > 0, "no input files"
 
-        q = multiprocessing.Queue(maxsize=1000000)
+        q = multiprocessing.Queue()
         if self._config.process_num <= 0:
             processes = multiprocessing.cpu_count()
+            #processes = 1
         else:
             processes = self.process_num
         size = int(math.ceil(float(len(fpaths)) / processes))
