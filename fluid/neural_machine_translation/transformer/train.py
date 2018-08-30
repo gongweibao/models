@@ -498,24 +498,23 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                         feed_list[place_id][pos_enc_param_name] = pos_enc
             for feed_dict in feed_list:
                 feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
-            #outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name],
-            #                     feed=feed_list)
-
-            outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name] if batch_id % 100 ==0 else[],
+            outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name],
                                  feed=feed_list)
 
-            if batch_id % 100 == 0 and batch_id > 0:
-                sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
-                total_sum_cost = sum_cost_val.sum(
-                )  # sum the cost from multi-devices
-                total_token_num = token_num_val.sum()
-                total_avg_cost = total_sum_cost / total_token_num
-                logging.info("epoch: %d, batch: %d, avg loss: %f, normalized loss: %f,"
-                      " ppl: %f" % (pass_id, batch_id, total_avg_cost,
-                                    total_avg_cost - loss_normalizer,
-                                    np.exp([min(total_avg_cost, 100)])))
+            #outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name] if batch_id % 100 ==0 else[],
+            #                     feed=feed_list)
 
-                logging.info("speed: {0} batch/s".format(100.0/(time.time() - avg_batch_time)))
+            #if batch_id % 100 == 0 and batch_id > 0:
+            sum_cost_val, token_num_val = np.array(outs[0]), np.array(outs[1])
+            total_sum_cost = sum_cost_val.sum()  # sum the cost from multi-devices
+            total_token_num = token_num_val.sum()
+            total_avg_cost = total_sum_cost / total_token_num
+            logging.info("epoch: %d, batch: %d, avg loss: %f, normalized loss: %f,"
+                  " ppl: %f" % (pass_id, batch_id, total_avg_cost,
+                                total_avg_cost - loss_normalizer,
+                                np.exp([min(total_avg_cost, 100)])))
+
+            #logging.info("speed: {0} batch/s".format(100.0/(time.time() - avg_batch_time)))
 
             if batch_id > 0 and batch_id % 1000 == 0:
                 fluid.io.save_persistables(
@@ -523,8 +522,8 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                     os.path.join(TrainTaskConfig.ckpt_dir, "latest.checkpoint"))
             init = True
 
-            if batch_id % 100 == 0 and batch_id > 0:
-                avg_batch_time=time.time()
+            #if batch_id % 100 == 0 and batch_id > 0:
+            #    avg_batch_time=time.time()
 
         time_consumed = time.time() - pass_start_time
         # Validate and save the model for inference.
