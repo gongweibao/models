@@ -23,7 +23,8 @@ class TestReader(unittest.TestCase):
         config.max_length=ModelHyperParams.max_length - 2,
         config.clip_last_batch=False
 
-        reader = MultiProcessReader(config=config) 
+        reader = DataReader(config=config) 
+        reader.load_data()
 
     def test_singleproces(self):
         pass

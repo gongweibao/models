@@ -4,6 +4,9 @@ import random
 import tarfile
 import cPickle
 
+import multiprocessing
+import math
+import copy
 
 class SortType(object):
     GLOBAL = 'global'
@@ -123,49 +126,90 @@ class DataReader(object):
         self._random = random.Random(x=config.seed)
         self._sample_infos = []
 
-        #def load_data(self):
         self._src_vocab = self.load_dict(self._config.src_vocab_fpath)
         self._only_src = True
         if self._config.trg_vocab_fpath is not None:
             self._trg_vocab = self.load_dict(self._config.trg_vocab_fpath)
             self._only_src = False
 
-        self._load_src_trg_ids(self._config.end_mark, 
-                self._config.fpattern, self._config.start_mark, self._config.tar_fname, self._config.unk_mark)
+        self._src_seq_ids = []
+        self._trg_seq_ids = None if self._only_src else []
+        self._sample_infos = []
 
-    def _load_src_trg_ids(self, end_mark, fpattern, start_mark, tar_fname,
-                         unk_mark):
+    def load_data(self):
+        if isinstance(self._config.fpattern, list):
+            fpaths = self._config.fpattern
+        else:
+            fpaths = glob.glob(self._config.fpattern)
+        assert len(fpaths) > 0, "no input files"
+
+        q = multiprocessing.Queue()
+        if self._config.process_num <= 0:
+            processes = multiprocessing.cpu_count()
+        else:
+            processes = self.process_num
+        size = int(math.ceil(float(len(fpaths)) / processes))
+
+        procs=[]
+        for i in range(processes):
+            conf = copy.deepcopy(self._config)
+            conf.fpattern = fpaths[i * size:(i + 1) * size]
+            p = multiprocessing.Process(target=load_data_in_process, args=(conf, q))
+            procs.append(p)
+
+        for i in range(processes):
+            procs[i].start()
+        
+        done_num = 0
+        idx=0
+        while True:
+            if done_num >= processes:
+                print("recv one done")
+                break
+            src_trg_ids = q.get()
+
+            if src_trg_ids is None:
+                done_num += 1
+                continue
+
+            self._src_seq_ids.append(src_trg_ids[0])
+            lens = [len(src_trg_ids[0])]
+            if not self._only_src:
+                self._trg_seq_ids.append(src_trg_ids[1])
+                lens.append(len(src_trg_ids[1]))
+            self._sample_infos.append(SampleInfo(idx, max(lens), min(lens)))
+            idx+=1
+
+        for i in range(processes):
+            procs[i].join()
+
+    def _load_src_trg_ids(self, q):
         converters = [
             Converter(
                 vocab=self._src_vocab,
-                beg=self._src_vocab[start_mark],
-                end=self._src_vocab[end_mark],
-                unk=self._src_vocab[unk_mark],
+                beg=self._src_vocab[self._config.start_mark],
+                end=self._src_vocab[self._config.end_mark],
+                unk=self._src_vocab[self._config.unk_mark],
                 delimiter=self._config.token_delimiter)
         ]
         if not self._only_src:
             converters.append(
                 Converter(
                     vocab=self._trg_vocab,
-                    beg=self._trg_vocab[start_mark],
-                    end=self._trg_vocab[end_mark],
-                    unk=self._trg_vocab[unk_mark],
+                    beg=self._trg_vocab[self._config.start_mark],
+                    end=self._trg_vocab[self._config.end_mark],
+                    unk=self._trg_vocab[self._config.unk_mark],
                     delimiter=self._config.token_delimiter))
 
         converters = ComposedConverter(converters)
 
-        self._src_seq_ids = []
-        self._trg_seq_ids = None if self._only_src else []
-        self._sample_infos = []
+        for i, line in enumerate(self._load_lines(self._config.fpattern, self._config.tar_fname)):
+            if len(line.strip()) <= 0:
+                continue
 
-        for i, line in enumerate(self._load_lines(fpattern, tar_fname)):
             src_trg_ids = converters(line)
-            self._src_seq_ids.append(src_trg_ids[0])
-            lens = [len(src_trg_ids[0])]
-            if not self._only_src:
-                self._trg_seq_ids.append(src_trg_ids[1])
-                lens.append(len(src_trg_ids[1]))
-            self._sample_infos.append(SampleInfo(i, max(lens), min(lens)))
+            q.put(src_trg_ids)
+        q.put(None)
 
     def get_sample_infos(self):
         return self._sample_infos
@@ -298,10 +342,10 @@ class ReaderConfig(object):
     end_mark        = "<e>"
     unk_mark        = "<unk>"
     seed            = 0
+    process_num     = 0
 
-import multiprocessing
-import math
-import copy
+
+"""
 class MultiProcessReader(object):
     def __init__(self, config):
         if isinstance(config.fpattern, list):
@@ -327,14 +371,17 @@ class MultiProcessReader(object):
             if rets[i] is None:
                 continue
             print(i, len(rets[i].get_sample_infos()))
+"""
 
-def load_data_in_process(config):
+def load_data_in_process(config, q):
     if len(config.fpattern) < 1:
         print("task set without input files so return")
-        return None
+        q.put(None)
+        return
 
     reader=DataReader(config)
+    reader._load_src_trg_ids(q)
     print("proc {} complete".format(config.fpattern))
-    return reader
+    return
 
 
