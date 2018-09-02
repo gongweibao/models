@@ -17,6 +17,8 @@ import logging
 import sys
 import copy
 
+from paddle.fluid.transpiler.details import program_to_code
+
 def parse_args():
     parser = argparse.ArgumentParser("Training for Transformer.")
     parser.add_argument(
@@ -614,6 +616,28 @@ def train(args):
                    fluid.default_main_program(), dev_count, sum_cost, avg_cost,
                    lr_scheduler, token_num, predict)
     else:
+        if args.update_method == "nccl2":
+            trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
+            port = os.getenv("PADDLE_PORT")
+            worker_ips = os.getenv("PADDLE_TRAINERS")
+            worker_endpoints = []
+            for ip in worker_ips.split(","):
+                worker_endpoints.append(':'.join([ip, port]))
+            trainers_num = len(worker_endpoints)
+            current_endpoint = os.getenv("POD_IP") + ":" + port
+            if trainer_id == 0:
+                logging.info("train_id == 0, sleep 60s")
+                time.sleep(60)
+            print("trainers_num:", trainers_num)
+            print("worker_endpoints:", worker_endpoints)
+            print("current_endpoint:", current_endpoint)
+            append_nccl2_prepare(trainer_id, worker_endpoints, current_endpoint)
+            train_loop(exe, fluid.default_main_program(), dev_count, sum_cost, avg_cost,
+                       lr_scheduler, token_num, predict, trainers_num, trainer_id)
+            return
+
+        print("pserver startup")
+        trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
         port = os.getenv("PADDLE_PORT", "6174")
         pserver_ips = os.getenv("PADDLE_PSERVERS")  # ip,ip...
         eplist = []
@@ -622,16 +646,6 @@ def train(args):
         pserver_endpoints = ",".join(eplist)  # ip:port,ip:port...
         trainers = int(os.getenv("PADDLE_TRAINERS_NUM", "0"))
         current_endpoint = os.getenv("POD_IP") + ":" + port
-        trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
-
-        if args.update_method == "nccl2":
-            if trainer_id == 0:
-                logging.info("train_id == 0, sleep 60s")
-                time.sleep(60)
-            append_nccl2_prepare(trainer_id, eplist, current_endpoint)
-            train_loop(exe, fluid.default_main_program(), dev_count, sum_cost, avg_cost,
-                       lr_scheduler, token_num, predict, trainers, trainer_id)
-            return
 
         t = fluid.DistributeTranspiler()
         t.transpile(trainer_id, pservers=pserver_endpoints, trainers=trainers)
@@ -650,6 +664,7 @@ def train(args):
             exe.run(pserver_prog)
         elif training_role == "TRAINER":
             trainer_prog = t.get_trainer_program()
+            #program_to_code(trainer_prog)
             train_loop(exe, trainer_prog, dev_count, sum_cost, avg_cost,
                        lr_scheduler, token_num, predict)
         else:
