@@ -19,6 +19,8 @@ import copy
 
 from paddle.fluid.transpiler.details import program_to_code
 
+import paddle.fluid.profiler as profiler
+
 def parse_args():
     parser = argparse.ArgumentParser("Training for Transformer.")
     parser.add_argument(
@@ -443,11 +445,17 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
     # use token average cost among multi-devices. and the gradient scale is
     # `1 / token_number` for average cost.
     build_strategy.gradient_scale_strategy = fluid.BuildStrategy.GradientScaleStrategy.Customized
+
+    strategy = fluid.ExecutionStrategy()
+    strategy.num_threads = 1
+
     train_exe = fluid.ParallelExecutor(
         use_cuda=TrainTaskConfig.use_gpu,
         loss_name=sum_cost.name,
         main_program=train_progm,
-        build_strategy=build_strategy,num_trainers=nccl2_num_trainers, trainer_id=nccl2_trainer_id)
+        build_strategy=build_strategy,
+        exec_strategy=strategy,
+        num_trainers=nccl2_num_trainers, trainer_id=nccl2_trainer_id)
 
     data_input_names = encoder_data_input_fields + decoder_data_input_fields[:
                                                                              -1] + label_data_input_fields
@@ -498,6 +506,12 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                             ModelHyperParams.max_length + 1,
                             ModelHyperParams.d_model)
                         feed_list[place_id][pos_enc_param_name] = pos_enc
+
+            if args.profile and pass_id == 0 and batch_id == 0:
+                profiler.start_profiler("All")
+            elif args.profile and pass_id == 0 and batch_id == 5:
+                profiler.stop_profiler("total", "/tmp/profile_%d" % trainer_id)
+
             for feed_dict in feed_list:
                 feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
             outs = train_exe.run(fetch_list=[sum_cost.name, token_num.name],
