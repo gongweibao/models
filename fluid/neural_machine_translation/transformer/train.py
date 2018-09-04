@@ -159,41 +159,6 @@ def append_nccl2_prepare(trainer_id, worker_endpoints, current_endpoint):
         })
     return nccl_id_var
 
-    """
-    if trainer_id >= 0:
-        # append gen_nccl_id at the end of startup program
-        trainer_id = int(os.getenv("PADDLE_TRAINER_ID"))
-        port = os.getenv("PADDLE_PSERVER_PORT")
-        worker_ips = os.getenv("PADDLE_TRAINER_IPS")
-        worker_endpoints = []
-        for ip in worker_ips.split(","):
-            worker_endpoints.append(':'.join([ip, port]))
-        num_trainers = len(worker_endpoints)
-        current_endpoint = os.getenv("PADDLE_CURRENT_IP") + ":" + port
-        num_trainers = len(worker_endpoints)
-        eps = copy.deepcopy(worker_endpoints)
-        eps.remove(current_endpoint)
-
-        nccl_id_var = fluid.default_startup_program().global_block().create_var(
-            name="NCCLID",
-            persistable=True,
-            type=fluid.core.VarDesc.VarType.RAW)
-        fluid.default_startup_program().global_block().append_op(
-            type="gen_nccl_id",
-            inputs={},
-            outputs={"NCCLID": nccl_id_var},
-            attrs={
-                "endpoint": current_endpoint,
-                "endpoint_list": worker_endpoints,
-                "trainer_id": trainer_id
-            })
-        #return nccl_id_var, num_trainers, trainer_id
-        return nccl_id_var
-    else:
-        raise Exception("must set positive PADDLE_TRAINER_ID env variables for "
-                        "nccl-based dist train.")
-    """
-
 def pad_batch_data(insts,
                    pad_idx,
                    n_head,
@@ -508,12 +473,10 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
                             ModelHyperParams.d_model)
                         feed_list[place_id][pos_enc_param_name] = pos_enc
 
-            """
             if args.profile and pass_id == 0 and batch_id == 0:
                 profiler.start_profiler("All")
             elif args.profile and pass_id == 0 and batch_id == 5:
-                profiler.stop_profiler("total", "/tmp/profile_%d" % trainer_id)
-            """
+                profiler.stop_profiler("total", "/tmp/profile_%d" % nccl2_trainer_id)
 
             for feed_dict in feed_list:
                 feed_dict[sum_cost.name + "@GRAD"] = 1. / total_num_token
