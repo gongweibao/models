@@ -123,7 +123,11 @@ def load_src_trg_ids(src_vocab, trg_vocab, config, fpattern, tar_fname, only_src
             continue
 
         src_trg_ids = converters(line)
-        yield src_trg_ids
+        lens = [len(src_trg_ids[0])]
+        if not only_src:
+            lens.append(len(src_trg_ids[1]))
+
+        yield (src_trg_ids, [i, max(lens), min(lens)])
 
 def load_lines(fpattern, tar_fname, field_delimiter, only_src=True):
     if isinstance(fpattern, list):
@@ -214,7 +218,7 @@ class DataReader(object):
             fpaths = glob.glob(self._config.fpattern)
         assert len(fpaths) > 0, "no input files"
 
-        process_num = 4
+        process_num = 5
         size = int(math.ceil(float(len(fpaths)) / process_num))
         readers=[]
         for i in range(process_num):
@@ -224,14 +228,16 @@ class DataReader(object):
                                   self._trg_vocab, self._config, f, self._config.tar_fname, self._only_src))
 
             
-        for idx, src_trg_ids in enumerate(paddle.reader.multiprocess_reader(readers, queue_size=10000)()):
+        for idx, (src_trg_ids, sample) in enumerate(paddle.reader.multiprocess_reader(readers, queue_size=100000, use_pipe=True)()):
             self._src_seq_ids.append(src_trg_ids[0])
-            lens = [len(src_trg_ids[0])]
+            #lens = [len(src_trg_ids[0])]
             if not self._only_src:
                 self._trg_seq_ids.append(src_trg_ids[1])
-                lens.append(len(src_trg_ids[1]))
-
-            self._sample_infos.append(SampleInfo(idx, max(lens), min(lens)));
+                #lens.append(len(src_trg_ids[1]))
+            #print sample
+            sample[0] = idx
+            #self._sample_infos.append(SampleInfo(idx, max(lens), min(lens)));
+            self._sample_infos.append(sample)
 
         logging.debug("src_trg_ids len:{} trg_seq_ids len:{}".format(len(self._src_seq_ids), len(self._trg_seq_ids)))
 
