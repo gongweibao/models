@@ -118,16 +118,35 @@ def load_src_trg_ids(src_vocab, trg_vocab, config, fpattern, tar_fname, only_src
 
     converters = ComposedConverter(converters)
 
+    src_ids=[]
+    trg_ids=[]
+    samples=[]
+
+    total=0
     for i, line in enumerate(load_lines(fpattern, tar_fname, config.field_delimiter, only_src)):
         if len(line) <= 0:
             continue
 
         src_trg_ids = converters(line)
+
         lens = [len(src_trg_ids[0])]
+        src_ids.append(src_trg_ids[0])
         if not only_src:
             lens.append(len(src_trg_ids[1]))
+            trg_ids.append(src_trg_ids[1])
 
-        yield (src_trg_ids, [i, max(lens), min(lens)])
+        samples.append([i, max(lens), min(lens)])
+
+        if len(src_ids) >= 1000:
+            total += len(src_ids)
+            yield (src_ids, trg_ids, samples)
+            src_ids=[]
+            trg_ids=[]
+            samples=[]
+
+    total += len(src_ids)
+    logging.debug("file:{} total_read:{}\n".format(fpattern, total))
+    yield (src_ids, trg_ids, samples)
 
 def load_lines(fpattern, tar_fname, field_delimiter, only_src=True):
     if isinstance(fpattern, list):
@@ -228,16 +247,16 @@ class DataReader(object):
                                   self._trg_vocab, self._config, f, self._config.tar_fname, self._only_src))
 
             
-        for idx, (src_trg_ids, sample) in enumerate(paddle.reader.multiprocess_reader(readers, queue_size=100000, use_pipe=True)()):
-            self._src_seq_ids.append(src_trg_ids[0])
-            #lens = [len(src_trg_ids[0])]
+        for src_ids, trg_ids, samples in paddle.reader.multiprocess_reader(readers, queue_size=10000, use_pipe=True)():
+            self._src_seq_ids += src_ids
             if not self._only_src:
-                self._trg_seq_ids.append(src_trg_ids[1])
-                #lens.append(len(src_trg_ids[1]))
-            #print sample
-            sample[0] = idx
-            #self._sample_infos.append(SampleInfo(idx, max(lens), min(lens)));
-            self._sample_infos.append(sample)
+                self._trg_seq_ids += trg_ids
+            self._sample_infos += samples
+
+        idx = 0
+        for s in self._sample_infos:
+            idx += 1
+            s[0] = idx
 
         logging.debug("src_trg_ids len:{} trg_seq_ids len:{}".format(len(self._src_seq_ids), len(self._trg_seq_ids)))
 
