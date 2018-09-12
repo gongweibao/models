@@ -119,8 +119,8 @@ def parse_args():
 
     args = parser.parse_args()
     # Append args related to dict
-    src_dict = reader.DataReader.load_dict(args.src_vocab_fpath)
-    trg_dict = reader.DataReader.load_dict(args.trg_vocab_fpath)
+    src_dict = reader.load_dict(args.src_vocab_fpath)
+    trg_dict = reader.load_dict(args.trg_vocab_fpath)
     dict_args = [
         "src_vocab_size", str(len(src_dict)), "trg_vocab_size",
         str(len(trg_dict)), "bos_idx", str(src_dict[args.special_token[0]]),
@@ -439,6 +439,8 @@ def train_loop(exe, train_progm, dev_count, sum_cost, avg_cost, lr_scheduler,
     train_data.load_data()
 
     logging.info("begin read multiple")
+    sys.exit(0)
+
     train_data = read_multiple(
         reader=train_data.batch_generator,
         count=dev_count if args.use_token_batch else 1)

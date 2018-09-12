@@ -8,6 +8,8 @@ import multiprocessing
 import math
 import copy
 import logging
+import functools
+import paddle
 
 class SortType(object):
     GLOBAL = 'global'
@@ -96,6 +98,76 @@ class MinMaxFilter(object):
     def batch(self):
         return self._creator.batch
 
+def load_src_trg_ids(src_vocab, trg_vocab, config, fpattern, tar_fname, only_src=True):
+    converters = [
+        Converter(
+            vocab=src_vocab,
+            beg=src_vocab[config.start_mark],
+            end=src_vocab[config.end_mark],
+            unk=src_vocab[config.unk_mark],
+            delimiter=config.token_delimiter)
+    ]
+    if not only_src:
+        converters.append(
+            Converter(
+                vocab=trg_vocab,
+                beg=trg_vocab[config.start_mark],
+                end=trg_vocab[config.end_mark],
+                unk=trg_vocab[config.unk_mark],
+                delimiter=config.token_delimiter))
+
+    converters = ComposedConverter(converters)
+
+    for i, line in enumerate(load_lines(fpattern, tar_fname, config.field_delimiter, only_src)):
+        if len(line) <= 0:
+            continue
+
+        src_trg_ids = converters(line)
+        yield src_trg_ids
+
+def load_lines(fpattern, tar_fname, field_delimiter, only_src=True):
+    if isinstance(fpattern, list):
+        fpaths = fpattern
+    else:
+        fpaths = glob.glob(fpattern)
+
+    if len(fpaths) == 1 and tarfile.is_tarfile(fpaths[0]):
+        if tar_fname is None:
+            raise Exception("If tar file provided, please set tar_fname.")
+
+        f = tarfile.open(fpaths[0], "r")
+        for line in f.extractfile(tar_fname):
+            fields = line.strip("\n").split(self._config.field_delimiter)
+            if (not only_src and len(fields) == 2) or (
+                    only_src and len(fields) == 1):
+                yield fields
+    else:
+        for fpath in fpaths:
+            logging.debug("open file:{}".format(fpath))
+            if not os.path.isfile(fpath):
+                raise IOError("Invalid file: %s" % fpath)
+
+            with open(fpath, "r") as f:
+                for line in f:
+                    fields = line.strip("\n").split(field_delimiter)
+                    if (not only_src and len(fields) == 2) or (
+                            only_src and len(fields) == 1):
+                        yield fields
+            logging.debug("finish file:{}".format(fpath))
+
+def load_dict(dict_path, reverse=False):
+    word_dict = {}
+    with open(dict_path, "r") as fdict:
+        for idx, line in enumerate(fdict):
+            if reverse:
+                word_dict[idx] = line.strip("\n")
+            else:
+                word_dict[line.strip("\n")] = idx
+    return word_dict
+
+def file_reader(src_vocab, trg_vocab, config, fpattern, tar_fname, only_src=True):
+    reader = load_src_trg_ids(src_vocab, trg_vocab, config, fpattern, tar_fname, only_src);
+    return reader
 
 class DataReader(object):
     """
@@ -121,23 +193,19 @@ class DataReader(object):
     ```
     """
 
-
     def __init__(self, config):
         self._config = config
         self._random = random.Random(x=config.seed)
         self._sample_infos = []
 
-        self._src_vocab = self.load_dict(self._config.src_vocab_fpath)
+        self._src_vocab = load_dict(self._config.src_vocab_fpath)
         self._only_src = True
         if self._config.trg_vocab_fpath is not None:
-            self._trg_vocab = self.load_dict(self._config.trg_vocab_fpath)
+            self._trg_vocab = load_dict(self._config.trg_vocab_fpath)
             self._only_src = False
 
-        self._src_seq_ids  = [None] * 50000000
-        self._trg_seq_ids  = [None] * 50000000
-        self._sample_infos = [None] * 50000000
-
-        logging.debug("src_trg_ids len {}".format(len(self._src_seq_ids)))
+        self._src_seq_ids = []
+        self._trg_seq_ids = []
 
     def load_data(self):
         if isinstance(self._config.fpattern, list):
@@ -146,127 +214,29 @@ class DataReader(object):
             fpaths = glob.glob(self._config.fpattern)
         assert len(fpaths) > 0, "no input files"
 
-        q = multiprocessing.Queue()
-        if self._config.process_num <= 0:
-            processes = multiprocessing.cpu_count()
-            #processes = 1
-        else:
-            processes = self.process_num
-        size = int(math.ceil(float(len(fpaths)) / processes))
+        process_num = 4
+        size = int(math.ceil(float(len(fpaths)) / process_num))
+        readers=[]
+        for i in range(process_num):
+             f = fpaths[i * size:(i + 1) * size]
+             readers.append(
+                functools.partial(file_reader, self._src_vocab, 
+                                  self._trg_vocab, self._config, f, self._config.tar_fname, self._only_src))
 
-        procs=[]
-        for i in range(processes):
-            conf = copy.deepcopy(self._config)
-            conf.fpattern = fpaths[i * size:(i + 1) * size]
-            p = multiprocessing.Process(target=load_data_in_process, args=(conf, q))
-            procs.append(p)
-
-        for i in range(processes):
-            procs[i].start()
-        
-        done_num = 0
-        idx=0
-        while True:
-            if done_num >= processes:
-                logging.info("all process done")
-                break
-
-            src_trg_ids = q.get()
-            if src_trg_ids is None:
-                done_num += 1
-                continue
-
-            self._src_seq_ids[idx] = src_trg_ids[0]
+            
+        for idx, src_trg_ids in enumerate(paddle.reader.multiprocess_reader(readers, queue_size=10000)()):
+            self._src_seq_ids.append(src_trg_ids[0])
             lens = [len(src_trg_ids[0])]
             if not self._only_src:
-                self._trg_seq_ids[idx] = src_trg_ids[1]
+                self._trg_seq_ids.append(src_trg_ids[1])
                 lens.append(len(src_trg_ids[1]))
-            self._sample_infos[idx] = SampleInfo(idx, max(lens), min(lens))
-            idx+=1
 
-        for i in range(processes):
-            procs[i].join()
+            self._sample_infos.append(SampleInfo(idx, max(lens), min(lens)));
 
-
-        logging.debug("src_trg_ids len2 {}".format(len(self._src_seq_ids)))
-
-        a_len= len(self._src_seq_ids)
-        del self._src_seq_ids[idx:a_len]
-        del self._trg_seq_ids[idx:a_len]
-        del self._sample_infos[idx:a_len]
-
-        logging.debug("src_trg_ids len3 {}".format(len(self._src_seq_ids)))
-
-    def _load_src_trg_ids(self, q):
-        converters = [
-            Converter(
-                vocab=self._src_vocab,
-                beg=self._src_vocab[self._config.start_mark],
-                end=self._src_vocab[self._config.end_mark],
-                unk=self._src_vocab[self._config.unk_mark],
-                delimiter=self._config.token_delimiter)
-        ]
-        if not self._only_src:
-            converters.append(
-                Converter(
-                    vocab=self._trg_vocab,
-                    beg=self._trg_vocab[self._config.start_mark],
-                    end=self._trg_vocab[self._config.end_mark],
-                    unk=self._trg_vocab[self._config.unk_mark],
-                    delimiter=self._config.token_delimiter))
-
-        converters = ComposedConverter(converters)
-
-        for i, line in enumerate(self._load_lines(self._config.fpattern, self._config.tar_fname)):
-            if len(line) <= 0:
-                continue
-
-            src_trg_ids = converters(line)
-            q.put(src_trg_ids)
-        q.put(None)
+        logging.debug("src_trg_ids len:{} trg_seq_ids len:{}".format(len(self._src_seq_ids), len(self._trg_seq_ids)))
 
     def get_sample_infos(self):
         return self._sample_infos
-
-    def _load_lines(self, fpattern, tar_fname):
-        if isinstance(fpattern, list):
-            fpaths = fpattern
-        else:
-            fpaths = glob.glob(fpattern)
-
-        if len(fpaths) == 1 and tarfile.is_tarfile(fpaths[0]):
-            if tar_fname is None:
-                raise Exception("If tar file provided, please set tar_fname.")
-
-            f = tarfile.open(fpaths[0], "r")
-            for line in f.extractfile(tar_fname):
-                fields = line.strip("\n").split(self._config.field_delimiter)
-                if (not self._only_src and len(fields) == 2) or (
-                        self._only_src and len(fields) == 1):
-                    yield fields
-        else:
-            for fpath in fpaths:
-                logging.debug("open file:{}".format(fpath))
-                if not os.path.isfile(fpath):
-                    raise IOError("Invalid file: %s" % fpath)
-
-                with open(fpath, "r") as f:
-                    for line in f:
-                        fields = line.strip("\n").split(self._config.field_delimiter)
-                        if (not self._only_src and len(fields) == 2) or (
-                                self._only_src and len(fields) == 1):
-                            yield fields
-
-    @staticmethod
-    def load_dict(dict_path, reverse=False):
-        word_dict = {}
-        with open(dict_path, "r") as fdict:
-            for idx, line in enumerate(fdict):
-                if reverse:
-                    word_dict[idx] = line.strip("\n")
-                else:
-                    word_dict[line.strip("\n")] = idx
-        return word_dict
 
     def batch_generator(self):
         # global sort or global shuffle
@@ -358,44 +328,5 @@ class ReaderConfig(object):
     seed            = 0
     process_num     = 0
 
-
-"""
-class MultiProcessReader(object):
-    def __init__(self, config):
-        if isinstance(config.fpattern, list):
-            fpaths = config.fpattern
-        else:
-            fpaths = glob.glob(config.fpattern)
-
-        assert len(fpaths) > 0, "no input files"
-        #print(sorted(fpaths))
-
-        processes = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(processes=processes)
-        size = int(math.ceil(float(len(fpaths)) / processes))
-
-        configs = []
-        for i in range(processes):
-            conf = copy.deepcopy(config)
-            conf.fpattern = fpaths[i * size:(i + 1) * size]
-            configs.append(conf)
-
-        rets = pool.map(load_data_in_process, configs)
-        for i in range(processes):
-            if rets[i] is None:
-                continue
-            print(i, len(rets[i].get_sample_infos()))
-"""
-
-def load_data_in_process(config, q):
-    if len(config.fpattern) < 1:
-        logging.debug("task set without input files so return")
-        q.put(None)
-        return
-
-    reader=DataReader(config)
-    reader._load_src_trg_ids(q)
-    logging.debug("proc {} complete".format(config.fpattern))
-    return
 
 
