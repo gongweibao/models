@@ -5,6 +5,7 @@ import paddle.fluid as fluid
 import paddle.fluid.layers as layers
 
 from config import *
+import sys
 
 
 def position_encoding_init(n_position, d_pos_vec):
@@ -477,6 +478,14 @@ def transformer(src_vocab_size,
     dec_inputs = all_inputs[enc_inputs_len:enc_inputs_len + dec_inputs_len]
     label = all_inputs[-2]
     weights = all_inputs[-1]
+
+    print("data_input_names:", data_input_names)
+    print("enc_inputs_fields:", encoder_data_input_fields)
+    print("dec_inputs_fields:", decoder_data_input_fields)
+    print("all_inputs:", all_inputs)
+    print("label:", label)
+    print("weights:", weights)
+    #sys.exit(0)
 
     enc_output = wrap_encoder(
         src_vocab_size,

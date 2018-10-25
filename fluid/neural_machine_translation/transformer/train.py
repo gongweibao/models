@@ -522,7 +522,7 @@ def train_loop(exe, train_prog, startup_prog, dev_count, sum_cost, avg_cost,
                 elif TrainTaskConfig.profile and batch_id == 10:
                     logging.info("end profiler")
                     #logging.info("profiling total time: ", time.time() - start_time)
-                    profiler.stop_profiler("total", "./transformer_local_profile_{}_pass{}".format(batch_id, pass_id))
+                    profiler.stop_profiler("total", "./transformer_local_gpu{}_batchid{}_pass{}".format(dev_count, batch_id, pass_id))
                     sys.exit(0)
 
                 logging.info("batch_id:{}".format(batch_id))
@@ -663,6 +663,14 @@ def train(args):
 
     if args.local:
         print("local start_up:")
+        """
+        print("trainer start:")
+        program_to_code(startup_prog)
+        print("trainer train:")
+        program_to_code(train_prog)
+        sys.exit(0)
+        """
+
         train_loop(exe, train_prog, startup_prog, dev_count, sum_cost, avg_cost,
                    token_num, predict, pyreader)
     else:
