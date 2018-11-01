@@ -467,10 +467,10 @@ def train_loop(exe,
 
     # For faster executor
     exec_strategy = fluid.ExecutionStrategy()
-    exec_strategy.use_experimental_executor = True
+    #exec_strategy.use_experimental_executor = True
     exec_strategy.num_threads = 1
     build_strategy = fluid.BuildStrategy()
-    build_strategy.debug_graphviz_path = "./ssa_graph.dot"
+    #build_strategy.debug_graphviz_path = "./ssa_graph.dot"
     # Since the token number differs among devices, customize gradient scale to
     # use token average cost among multi-devices. and the gradient scale is
     # `1 / token_number` for average cost.
