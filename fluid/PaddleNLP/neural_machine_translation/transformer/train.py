@@ -468,7 +468,6 @@ def train_loop(exe,
     # For faster executor
     exec_strategy = fluid.ExecutionStrategy()
     #exec_strategy.use_experimental_executor = True
-    exec_strategy.num_threads = 1
     build_strategy = fluid.BuildStrategy()
     #build_strategy.debug_graphviz_path = "./ssa_graph.dot"
     # Since the token number differs among devices, customize gradient scale to
@@ -485,8 +484,6 @@ def train_loop(exe,
         exec_strategy=exec_strategy,
         num_trainers=nccl2_num_trainers,
         trainer_id=nccl2_trainer_id)
-
-    sys.exit(0)
 
     if args.val_file_pattern is not None:
         test = test_context(exe, train_exe, dev_count)
