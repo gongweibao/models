@@ -470,6 +470,8 @@ def train_loop(exe,
     #exec_strategy.use_experimental_executor = True
     build_strategy = fluid.BuildStrategy()
     #build_strategy.debug_graphviz_path = "./ssa_graph.dot"
+    build_strategy.enable_sequential_execution = True
+    exec_strategy.num_threads = 1
     # Since the token number differs among devices, customize gradient scale to
     # use token average cost among multi-devices. and the gradient scale is
     # `1 / token_number` for average cost.
@@ -484,6 +486,9 @@ def train_loop(exe,
         exec_strategy=exec_strategy,
         num_trainers=nccl2_num_trainers,
         trainer_id=nccl2_trainer_id)
+
+    logging.info("before exit")
+    #sys.exit(0)
 
     if args.val_file_pattern is not None:
         test = test_context(exe, train_exe, dev_count)
