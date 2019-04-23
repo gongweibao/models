@@ -21,12 +21,13 @@ import subprocess
 
 import numpy as np
 
+import sys
+sys.path.append("..")
+sys.path.insert(0, "/paddle/build/build_ubuntu_develop_debug_gpu_y_grpc/python")
 import paddle
 import paddle.fluid as fluid
 import paddle.fluid.core as core
 import six
-import sys
-sys.path.append("..")
 import models
 import utils
 from reader import train, val
@@ -56,7 +57,7 @@ def parse_args():
     add_arg('data_dir',         str,   "./data/ILSVRC2012",  "The ImageNet dataset root dir.")
     add_arg('model_category',   str,   "models",             "Whether to use models_name or not, valid value:'models','models_name'" )
     add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
-    add_arg('fpuse',             bool,  False,                "Enable half precision training with fp16." )
+    add_arg('fuse',             bool,  False,                "Enable half precision training with fp16." )
     add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
     add_arg('reduce_master_grad', bool, False,               "Whether to allreduce fp32 gradients." )
     # for distributed
