@@ -56,6 +56,7 @@ def parse_args():
     add_arg('data_dir',         str,   "./data/ILSVRC2012",  "The ImageNet dataset root dir.")
     add_arg('model_category',   str,   "models",             "Whether to use models_name or not, valid value:'models','models_name'" )
     add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
+    add_arg('fpuse',             bool,  False,                "Enable half precision training with fp16." )
     add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
     add_arg('reduce_master_grad', bool, False,               "Whether to allreduce fp32 gradients." )
     # for distributed
@@ -270,6 +271,8 @@ def train_parallel(args):
     build_strategy = fluid.BuildStrategy()
     build_strategy.enable_inplace = False
     build_strategy.memory_optimize = False
+    if args.fuse:
+        build_strategy.fuse_all_reduce_ops = True
     build_strategy.enable_sequential_execution = bool(args.enable_sequential_execution)
     
     if args.reduce_strategy == "reduce":
