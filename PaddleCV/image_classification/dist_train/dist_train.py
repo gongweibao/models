@@ -335,8 +335,7 @@ def train_parallel(args):
         batch_id = 1
         # use pass_id+1 as per pass global shuffle for distributed training
         prepare_reader(True, train_pyreader, args, pass_id + 1)
-        if pass_id == 0:
-            train_pyreader.start()
+        train_pyreader.start()
         step_time=time.time()
         while True:
             try:
@@ -362,7 +361,7 @@ def train_parallel(args):
                 break
 
         print_train_time(start_time, time.time(), num_samples)
-        #train_pyreader.reset()
+        train_pyreader.reset()
         if pass_id >= args.start_test_pass:
             if args.multi_batch_repeat > 1:
                 copyback_repeat_bn_params(train_prog)
