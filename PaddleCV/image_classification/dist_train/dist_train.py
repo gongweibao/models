@@ -40,7 +40,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     add_arg = functools.partial(add_arguments, argparser=parser)
     # yapf: disable
-    add_arg('batch_size',       int,   256,                  "Minibatch size.")
+    add_arg('batch_size',       int,   32,                  "Minibatch size.")
     add_arg('use_gpu',          bool,  True,                 "Whether to use GPU or not.")
     add_arg('total_images',     int,   1281167,              "Training image number.")
     add_arg('num_epochs',       int,   120,                  "number of epochs.")
@@ -65,6 +65,7 @@ def parse_args():
     add_arg('multi_batch_repeat', int,  1,                  "Batch merge repeats.")
     add_arg('start_test_pass',    int,  0,                  "Start test after x passes.")
     add_arg('num_threads',        int,  8,                  "Use num_threads to run the fluid program.")
+    add_arg('skip_steps',        int,  30,                  "Use num_threads to run the fluid program.")
     add_arg('split_var',          bool, True,               "Split params on pserver.")
     add_arg('async_mode',         bool, False,              "Async distributed training, only for pserver mode.")
     add_arg('reduce_strategy',    str,  "allreduce",        "Choose from reduce or allreduce.")
@@ -80,11 +81,16 @@ def parse_args():
 def get_device_num():
     if os.getenv("CPU_NUM"):
         return int(os.getenv("CPU_NUM"))
+
     visible_device = os.getenv('CUDA_VISIBLE_DEVICES')
     if visible_device:
-        device_num = len(visible_device.split(','))
-    else:
-        device_num = subprocess.check_output(['nvidia-smi', '-L']).decode().count('\n')
+        return len(visible_device.split(','))
+
+    paddle_use_gpu_num = os.getenv('PADDLE_USE_GPU_NUM')
+    if paddle_use_gpu_num:
+        return int(paddle_use_gpu_num)
+    
+    device_num = subprocess.check_output(['nvidia-smi', '-L']).decode().count('\n')
     return device_num
 
 def prepare_reader(is_train, pyreader, args, pass_id=0):
@@ -93,7 +99,7 @@ def prepare_reader(is_train, pyreader, args, pass_id=0):
     else:
         reader = val(data_dir=args.data_dir)
     if is_train:
-        bs = args.batch_size / get_device_num()
+        bs = args.batch_size
     else:
         bs = 16
     pyreader.decorate_paddle_reader(
@@ -329,14 +335,18 @@ def train_parallel(args):
         # use pass_id+1 as per pass global shuffle for distributed training
         prepare_reader(True, train_pyreader, args, pass_id + 1)
         train_pyreader.start()
+        step_time=time.time()
         while True:
             try:
-                if batch_id % 30 == 0:
+                if batch_id % args.skip_steps == 0:
                     fetch_ret = exe.run(fetch_list)
                     fetched_data = [np.mean(np.array(d)) for d in fetch_ret]
-                    print("Pass [%d/%d], batch [%d/%d], loss %s, acc1: %s, acc5: %s, avg batch time %.4f" %
-                        (pass_id, args.num_epochs, batch_id, steps_per_pass, fetched_data[0], fetched_data[1],
-                         fetched_data[2], (time.time()-start_time) / batch_id))
+                    print("Pass [%d/%d], batch [%d/%d], loss %s, acc1: %s, acc5: %s, current skip_step speed:%.2f, avg speed:%.2f" %
+                        (pass_id, args.num_epochs, batch_id, steps_per_pass, fetched_data[0], fetched_data[1], \
+                         fetched_data[2],  \
+                         args.batch_size * args.skip_steps / (time.time()-step_time), \
+                         args.batch_size * batch_id / (time.time()-start_time)))
+                    step_time=time.time()
                 else:
                     fetch_ret = exe.run([])
             except fluid.core.EOFException:
@@ -390,6 +400,7 @@ def main():
     print_arguments(args)
     print_paddle_envs()
     args.dist_env = dist_env()
+    print("args dist env:", args.dist_env)
     train_parallel(args)
 
 if __name__ == "__main__":
