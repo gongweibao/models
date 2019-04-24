@@ -96,7 +96,7 @@ def get_device_num():
 
 def prepare_reader(is_train, pyreader, args, pass_id=0):
     if is_train:
-        reader = train(data_dir=args.data_dir, pass_id_as_seed=pass_id, infinite=True)
+        reader = train(data_dir=args.data_dir, pass_id_as_seed=pass_id)
     else:
         reader = val(data_dir=args.data_dir)
     if is_train:
