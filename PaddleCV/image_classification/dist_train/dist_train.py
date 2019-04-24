@@ -87,9 +87,9 @@ def get_device_num():
     if visible_device:
         return len(visible_device.split(','))
 
-    paddle_use_gpu_num = os.getenv('PADDLE_USE_GPU_NUM')
+    paddle_use_gpu_num = os.getenv('FLAGS_selected_gpus')
     if paddle_use_gpu_num:
-        return int(paddle_use_gpu_num)
+        return len(paddle_use_gpu_num.split(','))
     
     device_num = subprocess.check_output(['nvidia-smi', '-L']).decode().count('\n')
     return device_num
@@ -115,6 +115,7 @@ def build_program(is_train, main_prog, startup_prog, args):
 
     trainer_count = args.dist_env["num_trainers"]
     device_num_per_worker = get_device_num()
+    print("get_device_num:", device_num_per_worker, "trainer_count:", trainer_count)
     with fluid.program_guard(main_prog, startup_prog):
         pyreader = fluid.layers.py_reader(
             capacity=16,
