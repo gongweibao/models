@@ -68,6 +68,7 @@ def parse_args():
     add_arg('skip_steps',        int,  30,                  "Use num_threads to run the fluid program.")
     add_arg('split_var',          bool, True,               "Split params on pserver.")
     add_arg('async_mode',         bool, False,              "Async distributed training, only for pserver mode.")
+    add_arg('save_model',         bool, False,              "Async distributed training, only for pserver mode.")
     add_arg('reduce_strategy',    str,  "allreduce",        "Choose from reduce or allreduce.")
     add_arg('skip_unbalanced_data', bool, False,            "Skip data not if data not balanced on nodes.")
     add_arg('enable_sequential_execution', bool, False,            "Skip data not if data not balanced on nodes.")
@@ -95,7 +96,7 @@ def get_device_num():
 
 def prepare_reader(is_train, pyreader, args, pass_id=0):
     if is_train:
-        reader = train(data_dir=args.data_dir, pass_id_as_seed=pass_id)
+        reader = train(data_dir=args.data_dir, pass_id_as_seed=pass_id, infinite=True)
     else:
         reader = val(data_dir=args.data_dir)
     if is_train:
@@ -334,7 +335,8 @@ def train_parallel(args):
         batch_id = 1
         # use pass_id+1 as per pass global shuffle for distributed training
         prepare_reader(True, train_pyreader, args, pass_id + 1)
-        train_pyreader.start()
+        if pass_id == 0:
+            train_pyreader.start()
         step_time=time.time()
         while True:
             try:
@@ -360,7 +362,7 @@ def train_parallel(args):
                 break
 
         print_train_time(start_time, time.time(), num_samples)
-        train_pyreader.reset()
+        #train_pyreader.reset()
         if pass_id >= args.start_test_pass:
             if args.multi_batch_repeat > 1:
                 copyback_repeat_bn_params(train_prog)
@@ -370,13 +372,15 @@ def train_parallel(args):
             # test_ret = test_parallel(test_exe, test_prog, args, test_pyreader,test_fetch_list)
             print("Pass: %d, Test Loss %s, test acc1: %s, test acc5: %s\n" %
                   (pass_id, test_ret[0], test_ret[1], test_ret[2]))
-            model_path = os.path.join(args.model_save_dir + '/' + args.model,
+
+            if args.save_model:
+                model_path = os.path.join(args.model_save_dir + '/' + args.model,
                                   str(pass_id))
-            print("saving model to ", model_path)
-            if not os.path.isdir(model_path):
-                os.makedirs(model_path)
-            fluid.io.save_persistables(startup_exe, model_path, main_program=train_prog)
-    startup_exe.close()
+                print("saving model to ", model_path)
+                if not os.path.isdir(model_path):
+                    os.makedirs(model_path)
+                fluid.io.save_persistables(startup_exe, model_path, main_program=train_prog)
+        startup_exe.close()
     print("total train time: ", time.time() - over_all_start)
 
 

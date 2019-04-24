@@ -11,8 +11,8 @@ np.random.seed(0)
 
 DATA_DIM = 224
 
-THREAD = 3
-BUF_SIZE = 10240
+THREAD = 8
+BUF_SIZE = 1024
 
 DATA_DIR = 'data/ILSVRC2012'
 
@@ -131,38 +131,47 @@ def _reader_creator(file_list,
                     color_jitter=False,
                     rotate=False,
                     data_dir=DATA_DIR,
-                    pass_id_as_seed=0):
+                    pass_id_as_seed=0,
+                    infinite=False):
     def reader():
         with open(file_list) as flist:
             full_lines = [line.strip() for line in flist]
-            if shuffle:
-                if pass_id_as_seed:
-                    np.random.seed(pass_id_as_seed)
-                np.random.shuffle(full_lines)
-            if mode == 'train' and os.getenv('PADDLE_TRAINING_ROLE'):
-                # distributed mode if the env var `PADDLE_TRAINING_ROLE` exits
-                trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
-                trainer_count = int(os.getenv("PADDLE_TRAINERS_NUM", "1"))
-                per_node_lines = len(full_lines) // trainer_count
-                lines = full_lines[trainer_id * per_node_lines:(trainer_id + 1)
-                                   * per_node_lines]
-                print(
-                    "read images from %d, length: %d, lines length: %d, total: %d"
-                    % (trainer_id * per_node_lines, per_node_lines, len(lines),
-                       len(full_lines)))
-            else:
-                lines = full_lines
+            pass_id_as_seed = 1
+            while True:
+                if shuffle:
+                    if pass_id_as_seed:
+                        np.random.seed(pass_id_as_seed)
+                    np.random.shuffle(full_lines)
+                if mode == 'train' and os.getenv('PADDLE_TRAINING_ROLE'):
+                    # distributed mode if the env var `PADDLE_TRAINING_ROLE` exits
+                    trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
+                    trainer_count = int(os.getenv("PADDLE_TRAINERS_NUM", "1"))
+                    per_node_lines = len(full_lines) // trainer_count
+                    start = trainer_id * per_node_lines
+                    end = (trainer_id + 1) * per_node_lines
+                    lines = full_lines[start:end]
+                    print(
+                        "read images from %d, length: %d, lines length: %d, total: %d"
+                        % (start, per_node_lines, len(lines),
+                        len(full_lines)))
+                else:
+                    lines = full_lines
 
-            for line in lines:
-                if mode == 'train' or mode == 'val':
-                    img_path, label = line.split()
-                    img_path = os.path.join(data_dir, img_path)
-                    yield img_path, int(label)
-                elif mode == 'test':
-                    img_path, label = line.split()
-                    img_path = os.path.join(data_dir, img_path)
-
-                    yield [img_path]
+                for line in lines:
+                    if mode == 'train' or mode == 'val':
+                        img_path, label = line.split()
+                        img_path = img_path.replace("JPEG", "jpeg")
+                        img_path = os.path.join(data_dir, mode, img_path)
+                        yield img_path, int(label)
+                    elif mode == 'test':
+                        img_path, label = line.split()
+                        img_path = img_path.replace("JPEG", "jpeg")
+                        img_path = os.path.join(data_dir, mode, img_path)
+                        yield [img_path]
+                if not infinite:
+                    break
+                pass_id_as_seed += 1
+                print("passid ++ ", pass_id_as_seed)
 
     mapper = functools.partial(
         process_image, mode=mode, color_jitter=color_jitter, rotate=rotate)
@@ -170,8 +179,8 @@ def _reader_creator(file_list,
     return paddle.reader.xmap_readers(mapper, reader, THREAD, BUF_SIZE)
 
 
-def train(data_dir=DATA_DIR, pass_id_as_seed=0):
-    file_list = os.path.join(data_dir, 'train_list.txt')
+def train(data_dir=DATA_DIR, pass_id_as_seed=0, infinite=False):
+    file_list = os.path.join(data_dir, 'train.txt')
     return _reader_creator(
         file_list,
         'train',
@@ -179,16 +188,16 @@ def train(data_dir=DATA_DIR, pass_id_as_seed=0):
         color_jitter=False,
         rotate=False,
         data_dir=data_dir,
-        pass_id_as_seed=pass_id_as_seed)
+        pass_id_as_seed=pass_id_as_seed,
+        infinite=infinite)
 
 
 def val(data_dir=DATA_DIR):
-    file_list = os.path.join(data_dir, 'val_list.txt')
-    return _reader_creator(file_list, 'val', shuffle=False, 
-            data_dir=data_dir)
+    file_list = os.path.join(data_dir, 'val.txt')
+    return _reader_creator(file_list, 'val', shuffle=False, data_dir=data_dir)
 
 
 def test(data_dir=DATA_DIR):
-    file_list = os.path.join(data_dir, 'val_list.txt')
-    return _reader_creator(file_list, 'test', shuffle=False, 
-            data_dir=data_dir)
+    file_list = os.path.join(data_dir, 'val.txt')
+    return _reader_creator(file_list, 'test', shuffle=False, data_dir=data_dir)
+
