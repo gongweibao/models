@@ -23,7 +23,7 @@ import numpy as np
 
 import sys
 sys.path.append("..")
-sys.path.insert(0, "/paddle/build/build_ubuntu_develop_debug_gpu_y_grpc/python")
+#sys.path.insert(0, "/paddle/build/build_ubuntu_develop_debug_gpu_y_grpc/python")
 import paddle
 import paddle.fluid as fluid
 import paddle.fluid.core as core
