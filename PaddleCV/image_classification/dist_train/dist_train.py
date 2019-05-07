@@ -380,7 +380,7 @@ def train_parallel(args):
                 if not os.path.isdir(model_path):
                     os.makedirs(model_path)
                 fluid.io.save_persistables(startup_exe, model_path, main_program=train_prog)
-        startup_exe.close()
+        #startup_exe.close()
     print("total train time: ", time.time() - over_all_start)
 
 

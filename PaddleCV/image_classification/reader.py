@@ -142,7 +142,7 @@ def _reader_creator(file_list,
                     if pass_id_as_seed:
                         np.random.seed(pass_id_as_seed)
                     np.random.shuffle(full_lines)
-                if mode == 'train' and os.getenv('PADDLE_TRAINING_ROLE'):
+                if mode == 'train':
                     # distributed mode if the env var `PADDLE_TRAINING_ROLE` exits
                     trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
                     trainer_count = int(os.getenv("PADDLE_TRAINERS_NUM", "1"))
