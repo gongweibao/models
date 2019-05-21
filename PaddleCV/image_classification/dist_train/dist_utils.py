@@ -8,6 +8,23 @@ def nccl2_prepare(args, startup_prog, main_prog):
     t = fluid.DistributeTranspiler(config=config)
 
     envs = args.dist_env
+    trainers_num = len(envs["trainer_endpoints"])
+
+    if args.nccl_comm_num > 1:
+        config.nccl_comm_num = args.nccl_comm_num
+
+    if args.use_hierarchical_allreduce and trainers_num > args.hierarchical_allreduce_inter_nranks:
+        config.use_hierarchical_allreduce=args.use_hierarchical_allreduce
+
+        config.hierarchical_allreduce_inter_nranks=8
+        if config.hierarchical_allreduce_inter_nranks > 1:
+            config.hierarchical_allreduce_inter_nranks=args.hierarchical_allreduce_inter_nranks
+
+        assert config.hierarchical_allreduce_inter_nranks > 1
+        assert trainers_num % config.hierarchical_allreduce_inter_nranks == 0
+
+        config.hierarchical_allreduce_exter_nranks = \
+            trainers_num / config.hierarchical_allreduce_inter_nranks
 
     t.transpile(envs["trainer_id"],
         trainers=','.join(envs["trainer_endpoints"]),

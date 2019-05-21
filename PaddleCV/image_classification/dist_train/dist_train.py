@@ -24,6 +24,7 @@ import numpy as np
 import sys
 sys.path.append("..")
 #sys.path.insert(0, "/paddle/build/build_ubuntu_develop_debug_gpu_y_grpc/python")
+sys.path.insert(0, "/paddle/build/build_ubuntu_multincclstream_debug_gpu_y_grpc//python")
 import paddle
 import paddle.fluid as fluid
 import paddle.fluid.core as core
@@ -65,6 +66,9 @@ def parse_args():
     add_arg('multi_batch_repeat', int,  1,                  "Batch merge repeats.")
     add_arg('start_test_pass',    int,  0,                  "Start test after x passes.")
     add_arg('num_threads',        int,  8,                  "Use num_threads to run the fluid program.")
+    add_arg('nccl_comm_num',        int,  1,                  "nccl comm num")
+    add_arg("use_hierarchical_allreduce",     bool,   False,   "Use hierarchical allreduce or not.")
+    add_arg("hierarchical_allreduce_inter_nranks",     int,   8,   "Hierarchical allreduce inter ranks.")
     add_arg('skip_steps',        int,  30,                  "Use num_threads to run the fluid program.")
     add_arg('split_var',          bool, True,               "Split params on pserver.")
     add_arg('async_mode',         bool, False,              "Async distributed training, only for pserver mode.")
