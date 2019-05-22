@@ -59,13 +59,14 @@ def parse_args():
     add_arg('model_category',   str,   "models",             "Whether to use models_name or not, valid value:'models','models_name'" )
     add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
     add_arg('fuse',             bool,  False,                "Enable half precision training with fp16." )
+    add_arg('use_fast_executor',    bool,  True,                "Enable half precision training with fp16." )
     add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
     add_arg('reduce_master_grad', bool, False,               "Whether to allreduce fp32 gradients." )
     # for distributed
     add_arg('update_method',      str,  "local",            "Can be local, pserver, nccl2.")
     add_arg('multi_batch_repeat', int,  1,                  "Batch merge repeats.")
     add_arg('start_test_pass',    int,  0,                  "Start test after x passes.")
-    add_arg('num_threads',        int,  8,                  "Use num_threads to run the fluid program.")
+    add_arg('num_threads',        int,  2,                  "Use num_threads to run the fluid program.")
     add_arg('nccl_comm_num',        int,  1,                  "nccl comm num")
     add_arg("use_hierarchical_allreduce",     bool,   False,   "Use hierarchical allreduce or not.")
     add_arg("hierarchical_allreduce_inter_nranks",     int,   8,   "Hierarchical allreduce inter ranks.")
@@ -280,6 +281,8 @@ def train_parallel(args):
     #  is generated during execution. It may make the execution faster,
     #  because the temp variable's shape maybe the same between two iterations
     strategy.num_iteration_per_drop_scope = 30
+    if args.use_fast_executor:
+        strategy.use_experimental_executor = True
 
     build_strategy = fluid.BuildStrategy()
     build_strategy.enable_inplace = False
