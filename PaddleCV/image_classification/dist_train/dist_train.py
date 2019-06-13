@@ -24,7 +24,7 @@ import numpy as np
 import sys
 sys.path.append("..")
 #sys.path.insert(0, "/paddle/build/build_ubuntu_develop_debug_gpu_y_grpc/python")
-sys.path.insert(0, "/paddle/build/build_ubuntu_multincclstream_debug_gpu_y_grpc//python")
+sys.path.insert(0, "/paddle/build/build_ubuntu_fixncclid_debug_gpu_y_grpc//python")
 import paddle
 import paddle.fluid as fluid
 import paddle.fluid.core as core
@@ -290,6 +290,7 @@ def train_parallel(args):
     if args.fuse:
         build_strategy.fuse_all_reduce_ops = True
     build_strategy.enable_sequential_execution = bool(args.enable_sequential_execution)
+    build_strategy.enable_backward_optimizer_op_deps = True
     
     if args.reduce_strategy == "reduce":
         build_strategy.reduce_strategy = fluid.BuildStrategy(
