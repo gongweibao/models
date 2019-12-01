@@ -79,7 +79,9 @@ def build_program(is_train, main_prog, startup_prog, args):
             if is_train:
                 optimizer = create_optimizer(args)
                 avg_cost = loss_out[0]
-                optimizer.minimize(avg_cost)
+                if args.use_fp16:
+                    mp_optimizer = fluid.contrib.mixed_precision.decorate(optimizer, init_loss_scaling=128)
+                mp_optimizer.minimize(avg_cost)
                 #XXX: fetch learning rate now, better implement is required here. 
                 global_lr = optimizer._global_learning_rate()
                 global_lr.persistable = True

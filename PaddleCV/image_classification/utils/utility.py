@@ -111,6 +111,7 @@ def parse_args():
     add_arg('decay_epochs',             float,  2.4,                    "Decay epochs of exponential decay learning rate scheduler")
     add_arg('decay_rate',               float,  0.97,                   "Decay rate of exponential decay learning rate scheduler")
     add_arg('drop_connect_rate',        float,  0.2,                    "The value of drop connect rate")
+    add_arg('use_fp16',        bool,  False,                    "Use fp16 or not")
     parser.add_argument('--step_epochs', nargs='+', type=int, default=[30, 60, 90], help="piecewise decay step")
 
     # READER AND PREPROCESS
